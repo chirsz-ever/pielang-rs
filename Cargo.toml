@@ -1,0 +1,17 @@
+[package]
+name = "pielang"
+version = "0.1.0"
+authors = ["chirsz"]
+edition = "2018"
+description = "The interpreter for Pie, a dependent type language"
+license = "AGPL-3.0"
+keywords = ["programming-language", "interpreter", "pie", "pielang"]
+categories = ["command-line-utilities", "compilers"]
+# readme = 
+# repository = 
+
+[build-dependencies]
+lalrpop = { version = "0.19", features = ["lexer"] }
+
+[dependencies]
+lalrpop-util = "0.19"

@@ -1,0 +1,183 @@
+use crate::ast::*;
+
+grammar;
+
+// 词法解析器
+match {
+    r"\s*" => { }, // 空白
+    r";[^\n\r]*[\n\r]*" => { }, // 注释
+    r"#[^\n\r]*[\n\r]+" => HeaderComment, // 头部注释
+    "(",
+    ")",
+    "claim",
+    "define",
+    "the",
+    "quote",
+    r"Π|Pi|∏" => PI,
+    r"Σ|Sigma" => SIGMA,
+    r"λ|lambda" => LAMBDA,
+    r"→|->" => FARROW,
+    r"0|[1-9][0-9]*" => NatLit,
+    r"'[\w--\d]\w*" => AtomLit,
+} else {
+    // 不可用于标识符的字符：()[]{}"'`,#\|;
+    // 以及首字符不能是数字
+    r#"[\S--[()\[\]{}"'`,#\\|;]--\d][\S--[()\[\]{}"'`,#\\|;]]*"# => Ident,
+}
+
+Enclosed<T> = "(" <T> ")";
+
+pub Grammer = HeaderComment* <GlobalStatemant*>;
+
+pub GlobalStatemant: GlobalStatemant<()> = {
+    <l:@L> <e:Enclosed<("claim" <Identifier> <SExpr>)>> <r:@R> => {
+        let (ident, sexpr) = e;
+        GlobalStatemant::Claim(Span(l, r), ident, sexpr)
+    },
+    <l:@L> <e:Enclosed<("define" <Identifier> <SExpr>)>> <r:@R> => {
+        let (ident, sexpr) = e;
+        GlobalStatemant::Define(Span(l, r), ident, sexpr)
+    },
+    SExpr => GlobalStatemant::Expression(<>),
+}
+
+SExpr: SExpr<()> = {
+    Identifier => {
+        let span = if let Identifier::Identifier(span, _) = <> {
+            span
+        } else {
+            Span(0, 0)
+        };
+        SExpr {
+            span,
+            meta_info: (),
+            inner: SExprInner::Identifier(<>),
+        }
+    },
+    <l:@L> <lit:Literal> <r:@R> => {
+        SExpr {
+            span: Span(l, r),
+            meta_info: (),
+            inner: SExprInner::Literal(lit),
+        }
+    },
+    // (λ (ident+) expr)
+    <l:@L> <e:Enclosed<(LAMBDA <Enclosed<Identifier+>> <SExpr>)>> <r:@R> => {
+        let (args, body) = e;
+        let mut lambda_expr = body;
+        for ident in args {
+            lambda_expr = SExpr {
+                span: Span(l, r),
+                meta_info: (),
+                inner: SExprInner::LambdaExpr {
+                    arg: ident,
+                    body: Ref::new(lambda_expr),
+                }
+            }
+        }
+        lambda_expr
+    },
+    // (Π ((ident expr)+) expr)
+    <l:@L> <e:Enclosed<(PI <Enclosed<Enclosed<(<Identifier> <SExpr>)>+>> <SExpr>)>> <r:@R> => {
+        let (args, body) = e;
+        let mut pi_expr = body;
+        for (ident, ty) in args {
+            pi_expr = SExpr {
+                span: Span(l, r),
+                meta_info: (),
+                inner: SExprInner::PiExpr {
+                    arg: ident,
+                    arg_type: Ref::new(ty),
+                    body: Ref::new(pi_expr),
+                }
+            }
+        }
+        pi_expr
+    },
+    // (Σ ((ident expr)+) expr)
+    <l:@L> <e:Enclosed<(SIGMA <Enclosed<Enclosed<(<Identifier> <SExpr>)>+>> <SExpr>)>> <r:@R> => {
+        let (args, body) = e;
+        let mut sigma_expr = body;
+        for (ident, ty) in args {
+            sigma_expr = SExpr {
+                span: Span(l, r),
+                meta_info: (),
+                inner: SExprInner::SigmaExpr {
+                    arg: ident,
+                    arg_type: Ref::new(ty),
+                    body: Ref::new(sigma_expr),
+                }
+            }
+        }
+        sigma_expr
+    },
+    // (→ expr+ expr)
+    <l:@L> <e:Enclosed<(FARROW <SExpr+> <SExpr>)>> <r:@R> => {
+        let (tys, tgt) = e;
+        let mut pi_expr = tgt;
+        for ty in tys {
+            pi_expr = SExpr {
+                span: Span(l, r),
+                meta_info: (),
+                inner: SExprInner::SigmaExpr {
+                    arg: Identifier::Dummy,
+                    arg_type: Ref::new(ty),
+                    body: Ref::new(pi_expr),
+                }
+            }
+        }
+        pi_expr
+    },
+    // (the expr expr)
+    <l:@L> <e:Enclosed<("the" <SExpr> <SExpr>)>> <r:@R> => {
+        let (ty, expr) = e;
+        SExpr {
+            span: Span(l, r),
+            meta_info: (),
+            inner: SExprInner::TheExpr {
+                ty: Ref::new(ty),
+                expr: Ref::new(expr),
+            },
+        }
+    },
+    // (expr+ expr)
+    <l:@L> <e:Enclosed<(<SExpr+> <SExpr>)>> <r:@R> => {
+        let (mut sexprs, last) = e;
+        sexprs.push(last);
+        SExpr {
+            span: Span(l, r),
+            meta_info: (),
+            inner: SExprInner::SList(sexprs),
+        }
+    }
+};
+
+Identifier: Identifier<()> = {
+    <l:@L> <varname:Ident> <r:@R> => {
+        Identifier::Identifier(
+            Span(l, r),
+            Ref::new(
+                ScopeNode {
+                    varname: varname.into(),
+                    meta_info: (),
+                    outter: None,
+                }
+            )
+        )
+    }
+}
+
+Literal: Literal = {
+    // Nature Number: 0, 1, 2 ...
+    NatLit => {
+        Literal::Nat(<>.parse().unwrap())
+    },
+    // 'atom
+    AtomLit => {
+        Literal::Atom((<>)[1..].into())
+    },
+    // (quote atom)
+    Enclosed<("quote" <Ident>)> => {
+        Literal::Atom(<>.into())
+    }
+}
