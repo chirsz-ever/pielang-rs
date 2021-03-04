@@ -148,7 +148,9 @@ n
     (λ (x)
       (λ (Q) (f≡g (λ (t) (Q (t x))))))))
 ";
+    let bracket = "(Pi ([x Nat][y Nat]) (= Nat x y))";
     let parser = crate::syntax::GrammerParser::new();
     parser.parse(base).expect("base test");
     parser.parse(leibniz).expect(r#"work code "Leibniz""#);
+    parser.parse(bracket).expect("bracket test");
 }

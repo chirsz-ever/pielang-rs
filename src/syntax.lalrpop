@@ -9,6 +9,8 @@ match {
     r"#[^\n\r]*[\n\r]+" => HeaderComment, // 头部注释
     "(",
     ")",
+    "[",
+    "]",
     "claim",
     "define",
     "the",
@@ -25,7 +27,7 @@ match {
     r#"[\S--[()\[\]{}"'`,#\\|;]]+"# => Ident,
 }
 
-Enclosed<T> = "(" <T> ")";
+Enclosed<T> = { "(" <T> ")", "[" <T> "]" }
 
 pub Grammer = HeaderComment* <GlobalStatemant*>;
 
