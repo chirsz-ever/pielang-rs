@@ -23,6 +23,8 @@ pub struct SExpr<MetaInfo> {
     pub inner: SExprInner<MetaInfo>,
 }
 
+pub type Type<MetaInfo> = SExpr<MetaInfo>;
+
 #[derive(Debug, Clone)]
 pub enum SExprInner<MetaInfo> {
     /// 字面量，表示一个值
@@ -38,19 +40,19 @@ pub enum SExprInner<MetaInfo> {
     /// `(Π ((ident expr)+) expr)`，解析时转换为单层
     PiExpr {
         arg: Identifier<MetaInfo>,
-        arg_type: Ref<SExpr<MetaInfo>>,
+        arg_type: Ref<Type<MetaInfo>>,
         body: Ref<SExpr<MetaInfo>>,
     },
     /// `(Π ((ident expr)+) expr)`，解析时转换为单层
     /// 并把 `(→ expr+ expr)` 转换为 Π 表达式
     SigmaExpr {
         arg: Identifier<MetaInfo>,
-        arg_type: Ref<SExpr<MetaInfo>>,
+        arg_type: Ref<Type<MetaInfo>>,
         body: Ref<SExpr<MetaInfo>>,
     },
     /// `(Σ ((ident expr)+) expr)`，解析时转换为单层
     TheExpr {
-        ty: Ref<SExpr<MetaInfo>>,
+        ty: Ref<Type<MetaInfo>>,
         expr: Ref<SExpr<MetaInfo>>,
     },
     /// 函数调用或构造
