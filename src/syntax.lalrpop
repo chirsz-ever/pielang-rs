@@ -31,7 +31,7 @@ Enclosed<T> = { "(" <T> ")", "[" <T> "]" }
 
 pub Grammer = HeaderComment* <GlobalStatemant*>;
 
-pub GlobalStatemant: GlobalStatemant<()> = {
+pub GlobalStatemant: GlobalStatemant<Span> = {
     <l:@L> <e:Enclosed<("claim" <Identifier> <SExpr>)>> <r:@R> => {
         let (ident, sexpr) = e;
         GlobalStatemant::Claim(Span(l, r), ident, sexpr)
@@ -43,24 +43,17 @@ pub GlobalStatemant: GlobalStatemant<()> = {
     SExpr => GlobalStatemant::Expression(<>),
 }
 
-SExpr: SExpr<()> = {
-    Identifier => {
-        let span = if let Identifier::Identifier(span, _) = <> {
-            span
-        } else {
-            Span(0, 0)
-        };
-        SExpr {
-            span,
-            meta_info: (),
-            inner: SExprInner::Identifier(<>),
+SExpr: SExpr<Span> = {
+    <l:@L> <ident:Identifier> <r:@R> => {
+        SExpr::Info {
+            info: Span(l, r),
+            inner: Ref::new(SExpr::Identifier(ident)),
         }
     },
     <l:@L> <lit:Literal> <r:@R> => {
-        SExpr {
-            span: Span(l, r),
-            meta_info: (),
-            inner: SExprInner::Literal(lit),
+        SExpr::Info {
+            info: Span(l, r),
+            inner: Ref::new(SExpr::Literal(lit)),
         }
     },
     // (λ (ident+) expr)
@@ -68,104 +61,90 @@ SExpr: SExpr<()> = {
         let (args, body) = e;
         let mut lambda_expr = body;
         for ident in args {
-            lambda_expr = SExpr {
-                span: Span(l, r),
-                meta_info: (),
-                inner: SExprInner::LambdaExpr {
-                    arg: ident,
-                    body: Ref::new(lambda_expr),
-                }
+            lambda_expr = SExpr::LambdaExpr {
+                arg: ident,
+                body: Ref::new(lambda_expr),
             }
         }
-        lambda_expr
+        SExpr::Info {
+            info: Span(l, r),
+            inner: Ref::new(lambda_expr),
+        }
     },
     // (Π ((ident expr)+) expr)
     <l:@L> <e:Enclosed<(PI <Enclosed<Enclosed<(<Identifier> <SExpr>)>+>> <SExpr>)>> <r:@R> => {
         let (args, body) = e;
         let mut pi_expr = body;
         for (ident, ty) in args {
-            pi_expr = SExpr {
-                span: Span(l, r),
-                meta_info: (),
-                inner: SExprInner::PiExpr {
-                    arg: ident,
-                    arg_type: Ref::new(ty),
-                    body: Ref::new(pi_expr),
-                }
+            pi_expr = SExpr::PiExpr {
+                arg: ident,
+                arg_type: Ref::new(ty),
+                body: Ref::new(pi_expr),
             }
         }
-        pi_expr
+        SExpr::Info {
+            info: Span(l, r),
+            inner: Ref::new(pi_expr),
+        }
     },
     // (Σ ((ident expr)+) expr)
     <l:@L> <e:Enclosed<(SIGMA <Enclosed<Enclosed<(<Identifier> <SExpr>)>+>> <SExpr>)>> <r:@R> => {
         let (args, body) = e;
         let mut sigma_expr = body;
         for (ident, ty) in args {
-            sigma_expr = SExpr {
-                span: Span(l, r),
-                meta_info: (),
-                inner: SExprInner::SigmaExpr {
-                    arg: ident,
-                    arg_type: Ref::new(ty),
-                    body: Ref::new(sigma_expr),
-                }
+            sigma_expr = SExpr::SigmaExpr {
+                arg: ident,
+                arg_type: Ref::new(ty),
+                body: Ref::new(sigma_expr),
             }
         }
-        sigma_expr
+        SExpr::Info {
+            info: Span(l, r),
+            inner: Ref::new(sigma_expr),
+        }
     },
     // (→ expr+ expr)
     <l:@L> <e:Enclosed<(FARROW <SExpr+> <SExpr>)>> <r:@R> => {
         let (tys, tgt) = e;
         let mut pi_expr = tgt;
         for ty in tys {
-            pi_expr = SExpr {
-                span: Span(l, r),
-                meta_info: (),
-                inner: SExprInner::SigmaExpr {
-                    arg: Identifier::Dummy,
-                    arg_type: Ref::new(ty),
-                    body: Ref::new(pi_expr),
-                }
+            pi_expr = SExpr::SigmaExpr {
+                arg: Identifier::Dummy,
+                arg_type: Ref::new(ty),
+                body: Ref::new(pi_expr),
             }
         }
-        pi_expr
+        SExpr::Info {
+            info: Span(l, r),
+            inner: Ref::new(pi_expr),
+        }
     },
     // (the expr expr)
     <l:@L> <e:Enclosed<("the" <SExpr> <SExpr>)>> <r:@R> => {
         let (ty, expr) = e;
-        SExpr {
-            span: Span(l, r),
-            meta_info: (),
-            inner: SExprInner::TheExpr {
-                ty: Ref::new(ty),
-                expr: Ref::new(expr),
-            },
+        SExpr::Info {
+            info: Span(l, r),
+            inner: Ref::new(
+                SExpr::TheExpr {
+                    ty: Ref::new(ty),
+                    expr: Ref::new(expr),
+                }),
         }
     },
     // (expr+ expr)
     <l:@L> <e:Enclosed<(<SExpr+> <SExpr>)>> <r:@R> => {
         let (mut sexprs, last) = e;
         sexprs.push(last);
-        SExpr {
-            span: Span(l, r),
-            meta_info: (),
-            inner: SExprInner::SList(sexprs),
+        SExpr::Info {
+            info: Span(l, r),
+            inner: Ref::new(SExpr::SList(sexprs)),
         }
     }
 };
 
-Identifier: Identifier<()> = {
-    <l:@L> <varname:Ident> <r:@R> => {
-        Identifier::Identifier(
-            Span(l, r),
-            Ref::new(
-                ScopeNode {
-                    varname: varname.into(),
-                    meta_info: (),
-                    outter: None,
-                }
-            )
-        )
+Identifier: Identifier = {
+    Ident => {
+        Identifier::Identifier(<>.into())
     }
 }
 

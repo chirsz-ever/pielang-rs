@@ -8,45 +8,41 @@ pub struct Span(pub usize, pub usize);
 #[derive(Debug, Clone)]
 pub enum GlobalStatemant<MetaInfo> {
     /// `(claim varname type)`
-    Claim(Span, Identifier<MetaInfo>, SExpr<MetaInfo>),
+    Claim(Span, Identifier, SExpr<MetaInfo>),
 
     /// `(define varname expression)`
-    Define(Span, Identifier<MetaInfo>, SExpr<MetaInfo>),
+    Define(Span, Identifier, SExpr<MetaInfo>),
     Expression(SExpr<MetaInfo>),
 }
 
 /// 表达式包含位置信息和元信息（类型等）
 #[derive(Debug, Clone)]
-pub struct SExpr<MetaInfo> {
-    pub span: Span,
-    pub meta_info: MetaInfo,
-    pub inner: SExprInner<MetaInfo>,
-}
-
-pub type Type<MetaInfo> = SExpr<MetaInfo>;
-
-#[derive(Debug, Clone)]
-pub enum SExprInner<MetaInfo> {
+pub enum SExpr<MetaInfo> {
+    /// 用于在抽象代码树中插入信息的中间层，最多允许有一层。
+    Info {
+        info: MetaInfo,
+        inner: Ref<SExpr<MetaInfo>>,
+    },
     /// 字面量，表示一个值
     Literal(Literal),
     /// 标识符，表示变量、函数、类型等
-    Identifier(Identifier<MetaInfo>),
+    Identifier(Identifier),
     /// 以下 4 项为无法通过自定义或特殊变量实现的语法项
     /// `(λ (ident+) expr)`，解析时转换为单层
     LambdaExpr {
-        arg: Identifier<MetaInfo>,
+        arg: Identifier,
         body: Ref<SExpr<MetaInfo>>,
     },
     /// `(Π ((ident expr)+) expr)`，解析时转换为单层
     PiExpr {
-        arg: Identifier<MetaInfo>,
+        arg: Identifier,
         arg_type: Ref<Type<MetaInfo>>,
         body: Ref<SExpr<MetaInfo>>,
     },
     /// `(Π ((ident expr)+) expr)`，解析时转换为单层
     /// 并把 `(→ expr+ expr)` 转换为 Π 表达式
     SigmaExpr {
-        arg: Identifier<MetaInfo>,
+        arg: Identifier,
         arg_type: Ref<Type<MetaInfo>>,
         body: Ref<SExpr<MetaInfo>>,
     },
@@ -59,6 +55,8 @@ pub enum SExprInner<MetaInfo> {
     SList(Vec<SExpr<MetaInfo>>),
 }
 
+pub type Type<MetaInfo> = SExpr<MetaInfo>;
+
 /// 字面量，目前有整数和原子
 #[derive(Debug, Clone)]
 pub enum Literal {
@@ -69,15 +67,7 @@ pub enum Literal {
 /// 标识符，`Dummy` 用于将普通函数类型转换为 Pi 类型时，
 /// 未来或可用于 `_` 语法
 #[derive(Debug, Clone)]
-pub enum Identifier<MetaInfo> {
+pub enum Identifier {
     Dummy,
-    Identifier(Span, Ref<ScopeNode<MetaInfo>>),
-}
-
-/// 基于作用域的数据结构
-#[derive(Debug, Clone)]
-pub struct ScopeNode<MetaInfo> {
-    pub varname: Ref<str>,
-    pub meta_info: MetaInfo,
-    pub outter: Option<Ref<ScopeNode<MetaInfo>>>,
+    Identifier(Ref<str>),
 }
