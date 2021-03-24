@@ -145,7 +145,7 @@ SExpr: SExpr<Span> = {
 
 Identifier: Identifier = {
     Ident => {
-        Identifier::Identifier(<>.into())
+        Identifier::Symbol(<>.into())
     }
 }
 

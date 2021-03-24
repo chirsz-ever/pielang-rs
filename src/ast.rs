@@ -69,5 +69,5 @@ pub enum Literal {
 #[derive(Debug, Clone)]
 pub enum Identifier {
     Dummy,
-    Identifier(Ref<str>),
+    Symbol(Ref<str>),
 }
