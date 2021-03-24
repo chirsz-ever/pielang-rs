@@ -1,4 +1,4 @@
-pub type Ref<T> = std::rc::Rc<T>;
+use crate::Ref;
 
 /// 在源代码中起始和结束位置，前闭后开
 #[derive(Debug, Clone, Copy)]
