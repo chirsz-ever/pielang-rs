@@ -6,68 +6,60 @@ pub struct Span(pub usize, pub usize);
 
 /// 顶层语句允许 define 语句、claim 语句和表达式。
 #[derive(Debug, Clone)]
-pub enum GlobalStatemant<MetaInfo> {
+pub enum GlobalStatemant {
     /// `(claim varname type)`
-    Claim(Span, Identifier, SExpr<MetaInfo>),
+    Claim(Span, Symbol, Type),
 
     /// `(define varname expression)`
-    Define(Span, Identifier, SExpr<MetaInfo>),
-    Expression(SExpr<MetaInfo>),
-}
+    Define(Span, Symbol, Expr),
 
-/// 表达式包含位置信息和元信息（类型等）
-#[derive(Debug, Clone)]
-pub enum SExpr<MetaInfo> {
-    /// 用于在抽象代码树中插入信息的中间层，最多允许有一层。
-    Info {
-        info: MetaInfo,
-        inner: Ref<SExpr<MetaInfo>>,
-    },
-    /// 字面量，表示一个值
-    Literal(Literal),
-    /// 标识符，表示变量、函数、类型等
-    Identifier(Identifier),
-    /// 以下 4 项为无法通过自定义或特殊变量实现的语法项
-    /// `(λ (ident+) expr)`，解析时转换为单层
-    LambdaExpr {
-        arg: Identifier,
-        body: Ref<SExpr<MetaInfo>>,
-    },
-    /// `(Π ((ident expr)+) expr)`，解析时转换为单层
-    PiExpr {
-        arg: Identifier,
-        arg_type: Ref<Type<MetaInfo>>,
-        body: Ref<SExpr<MetaInfo>>,
-    },
-    /// `(Π ((ident expr)+) expr)`，解析时转换为单层
-    /// 并把 `(→ expr+ expr)` 转换为 Π 表达式
-    SigmaExpr {
-        arg: Identifier,
-        arg_type: Ref<Type<MetaInfo>>,
-        body: Ref<SExpr<MetaInfo>>,
-    },
-    /// `(Σ ((ident expr)+) expr)`，解析时转换为单层
-    TheExpr {
-        ty: Ref<Type<MetaInfo>>,
-        expr: Ref<SExpr<MetaInfo>>,
-    },
-    /// 函数调用或构造
-    SList(Vec<SExpr<MetaInfo>>),
+    /// 表达式
+    Expression(Expr),
 }
-
-pub type Type<MetaInfo> = SExpr<MetaInfo>;
 
 /// 字面量，目前有整数和原子
 #[derive(Debug, Clone)]
 pub enum Literal {
+    /// 自然数
     Nat(u64),
+
+    /// 原子
     Atom(Ref<str>),
 }
 
-/// 标识符，`Dummy` 用于将普通函数类型转换为 Pi 类型时，
-/// 未来或可用于 `_` 语法
+/// 包含位置信息的一个符号
 #[derive(Debug, Clone)]
-pub enum Identifier {
-    Dummy,
-    Symbol(Ref<str>),
+pub struct Symbol(pub Span, pub Ref<str>);
+
+/// 表达式包含位置信息
+#[derive(Debug, Clone)]
+pub enum Expr {
+    /// 字面量，表示一个值
+    Literal(Span, Literal),
+
+    /// 标识符，可以绑定到变量、函数、类型等
+    Identifier(Span, Ref<str>),
+
+    /// 函数调用，还包括值的构造（introduce）、解构（eliminate）
+    List(Span, Vec<Expr>),
+
+    /// 以下为一些特殊语法项
+
+    /// `(λ (ident+) expr)`
+    LambdaExpr(Span, Vec<Symbol>, Ref<Expr>),
+
+    /// `(Π ((ident expr)+) expr)`
+    PiExpr(Span, Vec<(Symbol, Type)>, Ref<Expr>),
+
+    /// `(→ expr+ expr)`
+    ArrowExpr(Span, Vec<Type>),
+
+    /// `(Σ ((ident expr)+) expr)`
+    SigmaExpr(Span, Vec<(Symbol, Type)>, Ref<Expr>),
+
+    /// "the" 表达式，为表达式指定一个类型
+    TheExpr(Span, Ref<Type>, Ref<Expr>),
 }
+
+/// 类型也是表达式
+pub type Type = Expr;
