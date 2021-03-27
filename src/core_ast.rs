@@ -19,17 +19,17 @@ pub enum Expr<MetaInfo> {
     Literal(ast::Literal),
 
     /// 标识符，表示变量、函数、类型等
-    Identifier(Identifier),
+    Identifier(Ref<str>),
 
     /// `(λ (ident) expr)`，被转换为单层
-    LambdaExpr(Identifier, Ref<Expr<MetaInfo>>),
+    LambdaExpr(Argument, Ref<Expr<MetaInfo>>),
 
     /// `(Π ((ident expr)) expr)`，被转换为单层
     /// 并将箭头表达式转换为 Π 表达式
-    PiExpr(Identifier, Ref<Type<MetaInfo>>, Ref<Expr<MetaInfo>>),
+    PiExpr(Argument, Ref<Type<MetaInfo>>, Ref<Expr<MetaInfo>>),
 
     /// `(Σ ((ident expr)) expr)`，被转换为单层
-    SigmaExpr(Identifier, Ref<Type<MetaInfo>>, Ref<Expr<MetaInfo>>),
+    SigmaExpr(Argument, Ref<Type<MetaInfo>>, Ref<Expr<MetaInfo>>),
 
     /// 函数调用或构造
     List(Vec<Expr<MetaInfo>>),
@@ -40,7 +40,7 @@ pub type Type<M> = Expr<M>;
 /// 标识符，`Dummy` 用于将普通函数类型转换为 Pi 类型时，
 /// 未来或可用于 `_` 语法
 #[derive(Debug, Clone)]
-pub enum Identifier {
+pub enum Argument {
     Dummy,
     Symbol(Ref<str>),
 }
@@ -53,12 +53,12 @@ pub fn unfold(e: &ast::Expr) -> Expr<()> {
     use ast::Expr::*;
     match e {
         Literal(_, lit) => Expr::Literal(lit.clone()),
-        Identifier(_, id) => Expr::Identifier(self::Identifier::Symbol(id.clone())),
+        Identifier(_, id) => Expr::Identifier(id.clone()),
         List(_, exprs) => Expr::List(exprs.iter().map(unfold).collect()),
         LambdaExpr(_, args, body) => {
             let mut e = unfold(body);
             for ast::Symbol(_, sym) in args {
-                e = Expr::LambdaExpr(self::Identifier::Symbol(sym.clone()), Ref::new(e));
+                e = Expr::LambdaExpr(self::Argument::Symbol(sym.clone()), Ref::new(e));
             }
             e
         }
@@ -66,7 +66,7 @@ pub fn unfold(e: &ast::Expr) -> Expr<()> {
             let mut e = unfold(body);
             for (ast::Symbol(_, sym), ty) in args {
                 e = Expr::PiExpr(
-                    self::Identifier::Symbol(sym.clone()),
+                    self::Argument::Symbol(sym.clone()),
                     Ref::new(unfold(ty)),
                     Ref::new(e),
                 );
@@ -78,7 +78,7 @@ pub fn unfold(e: &ast::Expr) -> Expr<()> {
             // syntax.lalrpop 中的规则保证至少有两项，所以以下 `unwrap` 不会有问题
             let mut e = tys.next_back().unwrap();
             for ty in tys {
-                e = Expr::PiExpr(self::Identifier::Dummy, Ref::new(ty), Ref::new(e));
+                e = Expr::PiExpr(self::Argument::Dummy, Ref::new(ty), Ref::new(e));
             }
             e
         }
@@ -86,7 +86,7 @@ pub fn unfold(e: &ast::Expr) -> Expr<()> {
             let mut e = unfold(body);
             for (ast::Symbol(_, sym), ty) in args {
                 e = Expr::SigmaExpr(
-                    self::Identifier::Symbol(sym.clone()),
+                    self::Argument::Symbol(sym.clone()),
                     Ref::new(unfold(ty)),
                     Ref::new(e),
                 );
@@ -159,7 +159,7 @@ pub fn check_builtin(e: &Expr<()>) -> Result<(), String> {
             check_builtin(body)?;
         }
         List(exprs) => match exprs.as_slice() {
-            [Identifier(self::Identifier::Symbol(f)), args @ ..] => {
+            [Identifier(f), args @ ..] => {
                 check_builtin_function(f, args.len())?;
             }
             [Info(_, inner), args @ ..] => {
@@ -167,7 +167,7 @@ pub fn check_builtin(e: &Expr<()>) -> Result<(), String> {
                 while let Info(_, inner) = f {
                     f = inner;
                 }
-                if let Identifier(self::Identifier::Symbol(f)) = f {
+                if let Identifier(f) = f {
                     check_builtin_function(f, args.len())?;
                 }
             }
