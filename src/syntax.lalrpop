@@ -14,7 +14,6 @@ match {
     "]",
     "claim",
     "define",
-    "the",
     "quote",
     r"Π|Pi|∏" => PI,
     r"Σ|Sigma" => SIGMA,
@@ -72,11 +71,6 @@ pub Expr: Expr = {
         let (mut tys, tgt) = e;
         tys.push(tgt);
         Expr::ArrowExpr(Span(l, r), tys)
-    },
-    // (the expr expr)
-    <l:@L> <e:Enclosed<("the" <Expr> <Expr>)>> <r:@R> => {
-        let (ty, expr) = e;
-        Expr::TheExpr(Span(l, r), Ref::new(ty), Ref::new(expr))
     },
     // (expr+ expr)
     <l:@L> <e:Enclosed<(<Expr+> <Expr>)>> <r:@R> => {

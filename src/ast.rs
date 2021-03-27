@@ -40,7 +40,7 @@ pub enum Expr {
     /// 标识符，可以绑定到变量、函数、类型等
     Identifier(Span, Ref<str>),
 
-    /// 函数调用，还包括值的构造（introduce）、解构（eliminate）
+    /// 函数调用、值的构造（introduce）、解构（eliminate），以及 the 表达式
     List(Span, Vec<Expr>),
 
     /// 以下为一些特殊语法项
@@ -56,9 +56,6 @@ pub enum Expr {
 
     /// `(Σ ((ident expr)+) expr)`
     SigmaExpr(Span, Vec<(Symbol, Type)>, Ref<Expr>),
-
-    /// "the" 表达式，为表达式指定一个类型
-    TheExpr(Span, Ref<Type>, Ref<Expr>),
 }
 
 /// 类型也是表达式

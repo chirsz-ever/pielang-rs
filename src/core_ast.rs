@@ -25,9 +25,6 @@ pub enum Expr<MetaInfo> {
     /// `(Σ ((ident expr)) expr)`，被转换为单层
     SigmaExpr(Identifier, Ref<Type<MetaInfo>>, Ref<Expr<MetaInfo>>),
 
-    /// `(the ty expr)`
-    TheExpr(Ref<Type<MetaInfo>>, Ref<Expr<MetaInfo>>),
-
     /// 函数调用或构造
     List(Vec<Expr<MetaInfo>>),
 }
@@ -52,7 +49,6 @@ pub fn unfold(e: &ast::Expr) -> Expr<()> {
         Literal(_, lit) => Expr::Literal(lit.clone()),
         Identifier(_, id) => Expr::Identifier(self::Identifier::Symbol(id.clone())),
         List(_, exprs) => Expr::List(exprs.iter().map(unfold).collect()),
-        TheExpr(_, ty, e) => Expr::TheExpr(Ref::new(unfold(ty)), Ref::new(unfold(e))),
         LambdaExpr(_, args, body) => {
             let mut e = unfold(body);
             for ast::Symbol(_, sym) in args {
@@ -96,6 +92,8 @@ pub fn unfold(e: &ast::Expr) -> Expr<()> {
 
 // 内建函数名及参数数
 static PIE_BUILTIN_FUNCTIONS: &[(&str, usize)] = &[
+    // `(the Type expr)`
+    ("the", 2),
     // Pair
     ("cons", 2),
     ("car", 1),
@@ -151,10 +149,6 @@ pub fn check_builtin(e: &Expr<()>) -> Result<(), String> {
         SigmaExpr(_arg, ty, body) => {
             check_builtin(ty)?;
             check_builtin(body)?;
-        }
-        TheExpr(ty, expr) => {
-            check_builtin(ty)?;
-            check_builtin(expr)?;
         }
         List(exprs) => match exprs.as_slice() {
             [Identifier(self::Identifier::Symbol(f)), args @ ..] => {
