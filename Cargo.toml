@@ -13,7 +13,9 @@ categories = ["command-line-utilities", "compilers"]
 [build-dependencies]
 lalrpop = { version = "0.19", features = ["lexer"] }
 
+# TODO: manage binary-only dependencies
 [dependencies]
 lalrpop-util = "0.19"
 structopt = "0.3"
 rustyline = "7.1"
+anyhow = "1.0"

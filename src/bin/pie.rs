@@ -1,4 +1,4 @@
-use pielang::syntax::{GlobalStatemantParser, GrammerParser};
+use pielang::*;
 use rustyline::KeyEvent;
 use std::fs::File;
 use std::io::{self, prelude::*};
@@ -23,7 +23,6 @@ struct Opt {
 
 fn main() -> io::Result<()> {
     let opt = Opt::from_args();
-    let parser = GrammerParser::new();
 
     // 如果有文件参数，先解释文件
     if let Some(input_arg) = opt.input.as_ref() {
@@ -36,31 +35,59 @@ fn main() -> io::Result<()> {
             &mut file_read
         };
 
-        let mut buf = String::new();
-        input.read_to_string(&mut buf).expect("read input failed");
-        match parser.parse(&buf) {
-            Ok(res) => {
-                for e in res {
-                    println!("{:?}", e);
-                }
-            }
+        match interpret(input) {
+            Ok(_) => {}
             Err(e) => {
                 eprintln!("Error: {}", e);
-                return Ok(());
             }
         }
-    }
-
-    if should_repl(&opt) {
+    } else if should_repl(&opt) {
         repl();
     }
 
     Ok(())
 }
 
+fn analyze_expression(expr: &ast::Expr) -> anyhow::Result<core_ast::Expr<()>> {
+    let e = core_ast::unfold(expr);
+    core_ast::check_builtin(&e).map_err(|err| anyhow::anyhow!("{}", err))?;
+    Ok(e)
+}
+
+fn interpret(input: &mut dyn Read) -> anyhow::Result<()> {
+    use ast::*;
+    use GlobalStatemant::*;
+
+    let parser = syntax::GrammerParser::new();
+    let mut buf = String::new();
+    input.read_to_string(&mut buf).expect("read input failed");
+    let stats = parser
+        .parse(&buf)
+        .map_err(|err| anyhow::anyhow!("{}", err))?;
+    for stat in stats {
+        match stat {
+            Claim(_, Symbol(_, sym), ty) => {
+                let e = analyze_expression(&ty)?;
+                println!("Claim {}:", sym);
+                println!("{:?}", e);
+            }
+            Define(_, Symbol(_, sym), expr) => {
+                let e = analyze_expression(&expr)?;
+                println!("Define {} =", sym);
+                println!("{:?}", e);
+            }
+            Expression(expr) => {
+                let e = analyze_expression(&expr)?;
+                println!("{:?}", e);
+            }
+        }
+    }
+    Ok(())
+}
+
 // 有 `-i` 参数或无参数时开启 REPL
 fn should_repl(opt: &Opt) -> bool {
-    return opt.interactive || (opt.input.is_none() && opt.exprs.is_empty());
+    opt.interactive || (opt.input.is_none() && opt.exprs.is_empty())
 }
 
 fn repl() {
@@ -69,7 +96,7 @@ fn repl() {
     let conf = Config::builder().auto_add_history(true).build();
     let mut rl = Editor::<()>::with_config(conf);
     rl.bind_sequence(KeyEvent::ctrl('\\'), Cmd::Insert(1, String::from("λ")));
-    let parser = GlobalStatemantParser::new();
+    let parser = syntax::ExprParser::new();
 
     for readline in rl.iter("> ") {
         match readline {
@@ -78,7 +105,11 @@ fn repl() {
                 if line.is_empty() {
                     continue;
                 }
-                match parser.parse(&line) {
+                match parser
+                    .parse(&line)
+                    .map_err(|e| anyhow::anyhow!("{}", e))
+                    .and_then(|expr| analyze_expression(&expr))
+                {
                     Ok(ret) => {
                         println!("{:?}", ret);
                     }

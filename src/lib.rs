@@ -5,10 +5,10 @@ use lalrpop_util::lalrpop_mod;
 
 lalrpop_mod!(#[allow(clippy::all)] pub syntax);
 
-mod ast;
-mod core_ast;
+pub mod ast;
+pub mod core_ast;
 #[cfg(test)]
 mod test;
-mod utils;
+pub mod utils;
 
 pub use utils::Ref;
