@@ -1,6 +1,12 @@
 use crate::ast;
 use crate::Ref;
 
+macro_rules! claim_array {
+    ($id:ident $name:ident: [$ty: ty; _] = $value:expr $(;)?) => {
+        $id $name: [$ty; $value.len()] = $value;
+    }
+}
+
 // TODO: 嵌入源代码位置信息，定义合适的错误类型
 
 /// 表达式包含位置信息和元信息（类型等）
@@ -91,7 +97,8 @@ pub fn unfold(e: &ast::Expr) -> Expr<()> {
 }
 
 // 内建函数名及参数数
-static PIE_BUILTIN_FUNCTIONS: &[(&str, usize)] = &[
+claim_array! {
+const PIE_BUILTIN_FUNCTIONS: [(&str, usize); _] = [
     // `(the Type expr)`
     ("the", 2),
     // Pair
@@ -131,6 +138,7 @@ static PIE_BUILTIN_FUNCTIONS: &[(&str, usize)] = &[
     // Absurd
     ("ind-Absurd", 2),
 ];
+}
 
 /// 检测内置构造器和函数如 `which-Nat`，它们不可柯里化
 pub fn check_builtin(e: &Expr<()>) -> Result<(), String> {
