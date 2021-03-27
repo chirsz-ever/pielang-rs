@@ -31,7 +31,7 @@ pub enum Expr<MetaInfo> {
     /// `(Σ ((ident expr)) expr)`，被转换为单层
     SigmaExpr(Argument, Ref<Type<MetaInfo>>, Ref<Expr<MetaInfo>>),
 
-    /// 函数调用或构造
+    /// 调用
     List(Vec<Expr<MetaInfo>>),
 }
 
