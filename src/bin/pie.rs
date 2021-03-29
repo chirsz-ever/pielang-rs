@@ -49,9 +49,7 @@ fn main() -> io::Result<()> {
 }
 
 fn analyze_expression(expr: &ast::Expr) -> anyhow::Result<core_ast::Expr<()>> {
-    let e = core_ast::unfold(expr);
-    core_ast::check_builtin(&e).map_err(|err| anyhow::anyhow!("{}", err))?;
-    Ok(e)
+    core_ast::unfold(expr).map_err(|err| anyhow::anyhow!("{}", err))
 }
 
 fn interpret(input: &mut dyn Read) -> anyhow::Result<()> {

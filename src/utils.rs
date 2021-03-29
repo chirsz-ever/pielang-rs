@@ -41,3 +41,14 @@ impl<K, V> StackMap<K, V> {
         })))
     }
 }
+
+pub fn map_result<T, U, E>(
+    it: impl IntoIterator<Item = T>,
+    mut f: impl FnMut(T) -> Result<U, E>,
+) -> Result<Vec<U>, E> {
+    let mut v = Vec::new();
+    for x in it.into_iter() {
+        v.push(f(x)?);
+    }
+    Ok(v)
+}

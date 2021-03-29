@@ -1,4 +1,5 @@
 use crate::ast;
+use crate::utils::map_result;
 use crate::Ref;
 
 macro_rules! claim_array {
@@ -31,8 +32,12 @@ pub enum Expr<MetaInfo> {
     /// `(Σ ((ident expr)) expr)`，被转换为单层
     SigmaExpr(Argument, Ref<Type<MetaInfo>>, Ref<Expr<MetaInfo>>),
 
-    /// 调用
-    List(Vec<Expr<MetaInfo>>),
+    /// 函数调用，经过柯里化转换为只有一个参数
+    Apply(Ref<Expr<MetaInfo>>, Ref<Expr<MetaInfo>>),
+
+    /// 内建调用
+    // 这里或许可以用两层 `Info` 给第一参数加上元信息
+    BuiltinApply(Ref<str>, Vec<Expr<MetaInfo>>),
 }
 
 pub type Type<M> = Expr<M>;
@@ -45,55 +50,93 @@ pub enum Argument {
     Symbol(Ref<str>),
 }
 
-// TODO: 当未修改时直接引用整个子树
-// TODO: 合并 unfold 和 check_builtin 的重复代码
-
-/// 将 Pi 表达式、Sigma 表达式展开为单层，箭头表达式转换为 Pi 表达式
-pub fn unfold(e: &ast::Expr) -> Expr<()> {
+/// 将 Pi 表达式、Sigma 表达式展开为单层，箭头表达式转换为 Pi 表达式，
+/// 调用分别转化为函数调用和内建调用，并检查内建调用的合法性
+pub fn unfold(e: &ast::Expr) -> Result<Expr<()>, String> {
     use ast::Expr::*;
-    match e {
+    let ret = match e {
         Literal(_, lit) => Expr::Literal(lit.clone()),
         Identifier(_, id) => Expr::Identifier(id.clone()),
-        List(_, exprs) => Expr::List(exprs.iter().map(unfold).collect()),
+        List(_, exprs) => match &**exprs {
+            [Identifier(_, f), args @ ..] if get_builtin_argument_number(f).is_some() => {
+                let valid_argc = get_builtin_argument_number(f).unwrap();
+                if args.len() == valid_argc {
+                    Expr::BuiltinApply(f.clone(), map_result(args, unfold)?)
+                } else {
+                    return Err(format!(
+                        "`{}` should take {} arguments, but here is {}.",
+                        f,
+                        valid_argc,
+                        args.len()
+                    ));
+                }
+            }
+            _ => unfold_list(exprs)?,
+        },
         LambdaExpr(_, args, body) => {
-            let mut e = unfold(body);
-            for ast::Symbol(_, sym) in args {
+            let mut e = unfold(body)?;
+            // 注意从后向前的顺序
+            for ast::Symbol(_, sym) in args.iter().rev() {
                 e = Expr::LambdaExpr(self::Argument::Symbol(sym.clone()), Ref::new(e));
             }
             e
         }
         PiExpr(_, args, body) => {
-            let mut e = unfold(body);
-            for (ast::Symbol(_, sym), ty) in args {
+            let mut e = unfold(body)?;
+            // 注意从后向前的顺序
+            for (ast::Symbol(_, sym), ty) in args.iter().rev() {
                 e = Expr::PiExpr(
                     self::Argument::Symbol(sym.clone()),
-                    Ref::new(unfold(ty)),
+                    Ref::new(unfold(ty)?),
                     Ref::new(e),
                 );
             }
             e
         }
         ArrowExpr(_, types) => {
-            let mut tys = types.iter().map(unfold);
+            let mut tys = map_result(types, unfold)?.into_iter().rev();
             // syntax.lalrpop 中的规则保证至少有两项，所以以下 `unwrap` 不会有问题
-            let mut e = tys.next_back().unwrap();
+            // 注意从后向前的顺序
+            let mut e = tys.next().unwrap();
             for ty in tys {
                 e = Expr::PiExpr(self::Argument::Dummy, Ref::new(ty), Ref::new(e));
             }
             e
         }
         SigmaExpr(_, args, body) => {
-            let mut e = unfold(body);
-            for (ast::Symbol(_, sym), ty) in args {
+            let mut e = unfold(body)?;
+            // 注意从后向前的顺序
+            for (ast::Symbol(_, sym), ty) in args.iter().rev() {
                 e = Expr::SigmaExpr(
                     self::Argument::Symbol(sym.clone()),
-                    Ref::new(unfold(ty)),
+                    Ref::new(unfold(ty)?),
                     Ref::new(e),
                 );
             }
             e
         }
+    };
+    Ok(ret)
+}
+
+/// 将列表经过柯里化转换为函数调用
+fn unfold_list(exprs: &[ast::Expr]) -> Result<Expr<()>, String> {
+    let mut es = exprs.iter();
+    let mut f = unfold(es.next().unwrap())?;
+    for e in es {
+        f = Expr::Apply(Ref::new(f), Ref::new(unfold(e)?));
     }
+    Ok(f)
+}
+
+/// 通过内建函数名获取其应有的参数数量，如果传入的不是内建函数名，返回 `None`。
+fn get_builtin_argument_number(fname: &str) -> Option<usize> {
+    for (bf, n) in std::array::IntoIter::new(PIE_BUILTIN_FUNCTIONS) {
+        if bf == fname {
+            return Some(n);
+        }
+    }
+    None
 }
 
 // 内建函数名及参数数
@@ -138,61 +181,4 @@ const PIE_BUILTIN_FUNCTIONS: [(&str, usize); _] = [
     // Absurd
     ("ind-Absurd", 2),
 ];
-}
-
-/// 检测内置构造器和函数如 `which-Nat`，它们不可柯里化
-pub fn check_builtin(e: &Expr<()>) -> Result<(), String> {
-    use Expr::*;
-    match e {
-        Info(_, inner) => {
-            check_builtin(inner)?;
-        }
-        Literal(_) => {}
-        Identifier(_) => {}
-        LambdaExpr(_arg, body) => check_builtin(body)?,
-        PiExpr(_arg, ty, body) => {
-            check_builtin(ty)?;
-            check_builtin(body)?;
-        }
-        SigmaExpr(_arg, ty, body) => {
-            check_builtin(ty)?;
-            check_builtin(body)?;
-        }
-        List(exprs) => match exprs.as_slice() {
-            [Identifier(f), args @ ..] => {
-                check_builtin_function(f, args.len())?;
-            }
-            [Info(_, inner), args @ ..] => {
-                let mut f = inner.as_ref();
-                while let Info(_, inner) = f {
-                    f = inner;
-                }
-                if let Identifier(f) = f {
-                    check_builtin_function(f, args.len())?;
-                }
-            }
-            _ => {
-                for e in exprs {
-                    check_builtin(e)?;
-                }
-            }
-        },
-    };
-    Ok(())
-}
-
-fn check_builtin_function(f: &str, argc: usize) -> Result<(), String> {
-    match PIE_BUILTIN_FUNCTIONS.iter().position(|(bf, _)| bf == &f) {
-        None => {}
-        Some(n) => {
-            let valid_argc = PIE_BUILTIN_FUNCTIONS[n].1;
-            if argc != valid_argc {
-                return Err(format!(
-                    "`{}` should take {} arguments, but here is {} arguments.",
-                    f, valid_argc, argc
-                ));
-            }
-        }
-    }
-    Ok(())
 }
