@@ -25,10 +25,10 @@ fn substitute<M>(expr: &Expr<M>, var: &str, e: &Expr<M>, env: &Env) -> Expr<()> 
 
 /// 对常用的 Argument 模式的简写
 #[inline]
-fn substitute_arg<M>(expr: &Expr<M>, var: &Argument, e: &Expr<M>, env: &Env) -> Expr<()> {
+fn substitute_arg(expr: &Expr<()>, var: &Argument, e: &Expr<()>, env: &Env) -> Expr<()> {
     match var {
         Argument::Symbol(sym) => substitute(expr, sym, e, env),
-        Argument::Dummy => todo!(), // expr.clone()
+        Argument::Dummy => expr.clone(),
     }
 }
 
@@ -46,6 +46,7 @@ pub fn synthesize_with_type<M>(e: &Expr<M>, ty: &Type<()>, env: &Env) -> Result<
         // FunI-1
         LambdaExpr(arg, r) => {
             assert_match!(let PiExpr(pi_arg, ty_arg, ty_ret) = ty);
+            // TODO: 优化此处
             match (arg, pi_arg) {
                 (Argument::Dummy, Argument::Dummy) => {
                     let r_o = synthesize_with_type(r, ty_ret, env)?;
