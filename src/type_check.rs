@@ -5,7 +5,6 @@ use core_ast::*;
 pub type Env = crate::utils::StackMap<Ref<str>, Type<()>>;
 pub type Result<T> = core::result::Result<T, ()>;
 
-
 macro_rules! assert_match {
     (let $p:tt($($i:ident),+) = $e:expr) => {
         let ($($i),+) = if let $p($($i),+) = $e {
@@ -29,6 +28,13 @@ fn substitute_arg(expr: &Expr<()>, var: &Argument, e: &Expr<()>, env: &Env) -> E
     match var {
         Argument::Symbol(sym) => substitute(expr, sym, e, env),
         Argument::Dummy => expr.clone(),
+    }
+}
+
+fn env_ext_arg(env: &Env, arg: &Argument, ty: &Type<()>) -> Env {
+    match arg {
+        Argument::Symbol(sym) => env.insert(sym.clone(), ty.clone()),
+        Argument::Dummy => env.clone(),
     }
 }
 
@@ -140,7 +146,29 @@ pub fn synthesize<M>(e: &Expr<M>, env: &Env) -> Result<(Type<()>, Expr<()>)> {
 /// 判断并计算表达式是一个类型（或 U）。
 /// 第四种 Judgement，见 Figure B.1。
 fn resolve_type<M>(e: &Expr<M>, env: &Env) -> Result<Type<()>> {
-    todo!()
+    use Expr::*;
+    let ret = match e {
+        Info(_, e) => return resolve_type(e, env),
+        // FunF-1
+        PiExpr(arg, ty, ty_ret) => {
+            let ty_o = resolve_type(ty, env)?;
+            let ty_ret_o = resolve_type(ty_ret, &env_ext_arg(&env, &arg, &ty_o))?;
+            PiExpr(arg.clone(), Ref::new(ty_o), Ref::new(ty_ret_o))
+        }
+        // SigmaF-1
+        SigmaExpr(arg, ty, ty_d) => {
+            let ty_o = resolve_type(ty, env)?;
+            let ty_d_o = resolve_type(ty_d, &env_ext_arg(&env, &arg, &ty_o))?;
+            SigmaExpr(arg.clone(), Ref::new(ty_o), Ref::new(ty_d_o))
+        }
+        BuiltinApply(bf, args) => {
+            todo!()
+        }
+        //Literal, Lambda, Identifier, Apply
+        // El
+        _ => return synthesize_with_type(e, &Identifier("U".into()), env),
+    };
+    Ok(ret)
 }
 
 /// 检查是否相同类型
