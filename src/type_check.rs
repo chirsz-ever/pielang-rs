@@ -43,6 +43,7 @@ fn gensym() -> Ref<str> {
     todo!()
 }
 
+// TODO: 改成通过 ty 检查 e
 /// 检查表达式 `e` 属于（已检查的）类型 `ty`，返回检查结果。
 /// 第六种 Judgement，见 Figure B.1。
 pub fn synthesize_with_type<M>(e: &Expr<M>, ty: &Type<()>, env: &Env) -> Result<Expr<()>> {
@@ -135,6 +136,8 @@ pub fn synthesize<M>(e: &Expr<M>, env: &Env) -> Result<(Type<()>, Expr<()>)> {
             let ty = substitute_arg(&ty_ret, &var, &arg_o, env);
             (ty, Apply(Ref::new(f_o), Ref::new(arg_o)))
         }
+        // 目前还未引入 Universe Hierarchy，但这条规则似乎没有问题
+        U(n) => (U(n + 1), U(*n)),
         BuiltinApply(bf, args) => {
             todo!()
         }
@@ -164,9 +167,11 @@ fn resolve_type<M>(e: &Expr<M>, env: &Env) -> Result<Type<()>> {
         BuiltinApply(bf, args) => {
             todo!()
         }
+        // UF
+        U(n) => U(*n),
         //Literal, Lambda, Identifier, Apply
         // El
-        _ => return synthesize_with_type(e, &Identifier("U".into()), env),
+        _ => return synthesize_with_type(e, &U(0), env),
     };
     Ok(ret)
 }

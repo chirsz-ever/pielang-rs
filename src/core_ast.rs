@@ -38,6 +38,9 @@ pub enum Expr<MetaInfo> {
     /// 内建调用
     // 这里或许可以用两层 `Info` 给第一参数加上元信息
     BuiltinApply(Ref<str>, Vec<Expr<MetaInfo>>),
+
+    /// 类型的类型，后面的数字为 Universe Hierarchy 准备，目前统一是 0
+    U(u64),
 }
 
 pub type Type<M> = Expr<M>;
@@ -51,11 +54,13 @@ pub enum Argument {
 }
 
 /// 将 Pi 表达式、Sigma 表达式展开为单层，箭头表达式转换为 Pi 表达式，
-/// 调用分别转化为函数调用和内建调用，并检查内建调用的合法性
+/// 调用分别转化为函数调用和内建调用，并检查内建调用的合法性，将标识符 U 转换为
+/// core_ast::Expr::U。
 pub fn unfold(e: &ast::Expr) -> Result<Expr<()>, String> {
     use ast::Expr::*;
     let ret = match e {
         Literal(_, lit) => Expr::Literal(lit.clone()),
+        Identifier(_, id) if &**id == "U" => Expr::U(0),
         Identifier(_, id) => Expr::Identifier(id.clone()),
         List(_, exprs) => match &**exprs {
             [Identifier(_, f), args @ ..] if get_builtin_argument_number(f).is_some() => {
