@@ -43,16 +43,20 @@ fn gensym() -> Ref<str> {
     todo!()
 }
 
-// TODO: 改成通过 ty 检查 e
 /// 检查表达式 `e` 属于（已检查的）类型 `ty`，返回检查结果。
 /// 第六种 Judgement，见 Figure B.1。
 pub fn synthesize_with_type<M>(e: &Expr<M>, ty: &Type<()>, env: &Env) -> Result<Expr<()>> {
     use Expr::*;
-    let ret = match e {
-        Info(_, e) => return synthesize_with_type(e, ty, env),
+    let ty_o = resolve_type(ty, env)?;
+    let ret = match &ty_o {
         // FunI-1
-        LambdaExpr(arg, r) => {
-            assert_match!(let PiExpr(pi_arg, ty_arg, ty_ret) = ty);
+        PiExpr(pi_arg, ty_arg, ty_ret) => {
+            // 除去外层 Info
+            let mut e = e;
+            while let Info(_, inner) = e {
+                e = inner;
+            }
+            assert_match!(let LambdaExpr(arg, r) = e);
             // TODO: 优化此处
             match (arg, pi_arg) {
                 (Argument::Dummy, Argument::Dummy) => {
@@ -96,14 +100,16 @@ pub fn synthesize_with_type<M>(e: &Expr<M>, ty: &Type<()>, env: &Env) -> Result<
                 }
             }
         }
+        SigmaExpr(sigma_arg, ty_arg, ty_ret) => {
+            todo!()
+        }
         BuiltinApply(bf, args) => {
             todo!()
         }
-        //Literal, Identifier, Apply, Pi, Sigma
         // Switch
         _ => {
-            let (e_o, ty_o) = synthesize(e, env)?;
-            type_check_same(&ty_o, ty, env)?;
+            let (e_o, ty_e_o) = synthesize(e, env)?;
+            type_check_same(&ty_e_o, &ty_o, env)?;
             e_o
         }
     };
