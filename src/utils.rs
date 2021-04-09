@@ -15,7 +15,7 @@ struct StackMapNode<K, V> {
 }
 
 impl<K, V> StackMap<K, V> {
-    pub fn new() -> StackMap<K, V> {
+    pub const fn new() -> StackMap<K, V> {
         StackMap(None)
     }
 
