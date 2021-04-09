@@ -3,6 +3,7 @@ use rustyline::KeyEvent;
 use std::fs::File;
 use std::io::{self, prelude::*};
 use structopt::StructOpt;
+use type_check as tc;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -62,8 +63,8 @@ fn interpret(input: &mut dyn Read) -> anyhow::Result<()> {
     let stats = parser
         .parse(&buf)
         .map_err(|err| anyhow::anyhow!("{}", err))?;
-    for stat in stats {
-        match stat {
+    for stmt in stats {
+        match stmt {
             Claim(_, Symbol(_, sym), ty) => {
                 let e = analyze_expression(&ty)?;
                 println!("Claim {}:", sym);
@@ -108,8 +109,15 @@ fn repl() {
                     .map_err(|e| anyhow::anyhow!("{}", e))
                     .and_then(|expr| analyze_expression(&expr))
                 {
-                    Ok(ret) => {
-                        println!("{:?}", ret);
+                    Ok(e) => {
+                        let ty = match tc::synthesize(&e, &tc::Env::new()) {
+                            Ok((ty, _)) => ty,
+                            Err(_) => {
+                                println!("Type check error!");
+                                continue;
+                            }
+                        };
+                        println!("{:?}: {:?}", e, ty);
                     }
                     Err(e) => {
                         println!("Error: {}", e);

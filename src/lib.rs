@@ -12,7 +12,7 @@ pub mod ast;
 pub mod core_ast;
 #[cfg(test)]
 mod test;
-mod type_check;
+pub mod type_check;
 pub mod utils;
 
 pub use utils::Ref;
