@@ -96,6 +96,7 @@ fn repl() {
     let mut rl = Editor::<()>::with_config(conf);
     rl.bind_sequence(KeyEvent::ctrl('\\'), Cmd::Insert(1, String::from("λ")));
     let parser = syntax::ExprParser::new();
+    let env = tc::default_environment();
 
     for readline in rl.iter("> ") {
         match readline {
@@ -110,7 +111,7 @@ fn repl() {
                     .and_then(|expr| analyze_expression(&expr))
                 {
                     Ok(e) => {
-                        let ty = match tc::synthesize(&e, &tc::Env::new()) {
+                        let ty = match tc::synthesize(&e, &env) {
                             Ok((ty, _)) => ty,
                             Err(_) => {
                                 println!("Type check error!");

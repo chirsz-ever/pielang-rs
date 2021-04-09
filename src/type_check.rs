@@ -47,8 +47,7 @@ fn gensym() -> Ref<str> {
 /// 第六种 Judgement，见 Figure B.1。
 pub fn synthesize_with_type<M>(e: &Expr<M>, ty: &Type<()>, env: &Env) -> Result<Expr<()>> {
     use Expr::*;
-    let ty_o = resolve_type(ty, env)?;
-    let ret = match &ty_o {
+    let ret = match &ty {
         // FunI-1
         PiExpr(pi_arg, ty_arg, ty_ret) => {
             // 除去外层 Info
@@ -108,8 +107,8 @@ pub fn synthesize_with_type<M>(e: &Expr<M>, ty: &Type<()>, env: &Env) -> Result<
         }
         // Switch
         _ => {
-            let (e_o, ty_e_o) = synthesize(e, env)?;
-            type_check_same(&ty_e_o, &ty_o, env)?;
+            let (ty_e_o, e_o) = synthesize(e, env)?;
+            type_check_same(&ty_e_o, &ty, env)?;
             e_o
         }
     };
@@ -145,7 +144,15 @@ pub fn synthesize<M>(e: &Expr<M>, env: &Env) -> Result<(Type<()>, Expr<()>)> {
         // 目前还未引入 Universe Hierarchy，但这条规则似乎没有问题
         U(n) => (U(n + 1), U(*n)),
         BuiltinApply(bf, args) => {
-            todo!()
+            match (&**bf, &**args) {
+                // "The" 规则
+                ("the", [ty, expr]) => {
+                    let ty_o = resolve_type(ty, env)?;
+                    let expr_o = synthesize_with_type(expr, &ty_o, env)?;
+                    (ty_o, expr_o)
+                }
+                _ => unreachable!(),
+            }
         }
         LambdaExpr(_, _) => return Err(()),
     };
@@ -184,8 +191,30 @@ fn resolve_type<M>(e: &Expr<M>, env: &Env) -> Result<Type<()>> {
 
 /// 检查是否相同类型
 /// 第五种 Judgement，见 Figure B.1。
-fn type_check_same(t1: &Type<()>, t2: &Type<()>, env: &Env) -> Result<()> {
-    todo!()
+fn type_check_same(ty1: &Type<()>, ty2: &Type<()>, env: &Env) -> Result<()> {
+    use Expr::*;
+    dbg!(ty1, ty2);
+    // TODO: 比较前充分计算 ty1 和 ty2
+    match (ty1, ty2) {
+        (Identifier(id1), Identifier(id2)) => {
+            if id1 == id2 {
+                return Ok(());
+            } else {
+                return Err(());
+            }
+        }
+        (U(m), U(n)) => {
+            if m == n {
+                return Ok(());
+            } else {
+                return Err(());
+            }
+        }
+        _ => {
+            todo!()
+        }
+    }
+    Ok(())
 }
 
 /// 检查是否相同表达式
@@ -201,4 +230,10 @@ fn synthesize_literal(lit: &Literal) -> (Type<()>, Expr<()>) {
         Literal::Atom(_) => Type::Identifier("Atom".into()),
     };
     (ty, Expr::Literal(lit.clone()))
+}
+
+pub fn default_environment() -> Env {
+    Env::new()
+        .insert("Nat".into(), Expr::U(0))
+        .insert("Atom".into(), Expr::U(0))
 }
