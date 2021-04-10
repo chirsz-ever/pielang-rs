@@ -1,9 +1,12 @@
+use fehler::{throw, throws};
 use pielang::*;
 use rustyline::KeyEvent;
 use std::fs::File;
 use std::io::{self, prelude::*};
 use structopt::StructOpt;
 use type_check as tc;
+
+type Error = anyhow::Error;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -49,11 +52,13 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
-fn analyze_expression(expr: &ast::Expr) -> anyhow::Result<core_ast::Expr<()>> {
-    core_ast::unfold(expr).map_err(|err| anyhow::anyhow!("{}", err))
+#[throws]
+fn analyze_expression(expr: &ast::Expr) -> core_ast::Expr<()> {
+    core_ast::unfold(expr)?
 }
 
-fn interpret(input: &mut dyn Read) -> anyhow::Result<()> {
+#[throws]
+fn interpret(input: &mut dyn Read) {
     use ast::*;
     use GlobalStatemant::*;
 
@@ -81,7 +86,6 @@ fn interpret(input: &mut dyn Read) -> anyhow::Result<()> {
             }
         }
     }
-    Ok(())
 }
 
 // 有 `-i` 参数或无参数时开启 REPL
@@ -113,8 +117,8 @@ fn repl() {
                     Ok(e) => {
                         let ty = match tc::synthesize(&e, &env) {
                             Ok((ty, _)) => ty,
-                            Err(_) => {
-                                println!("Type check error!");
+                            Err(e) => {
+                                println!("Type Error: {:?}", e);
                                 continue;
                             }
                         };

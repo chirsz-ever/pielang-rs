@@ -57,7 +57,7 @@ pub struct Error {
 #[derive(Debug, Clone)]
 pub enum ErrorKind {
     IllegalArgumentNumber {
-        caller: Ref<str>,
+        caller: String,
         valid_argc: usize,
         current_argc: usize,
     },
@@ -107,7 +107,7 @@ pub fn unfold(e: &ast::Expr) -> Expr<()> {
                     throw!(Error {
                         loc: loc.clone(),
                         erk: ErrorKind::IllegalArgumentNumber {
-                            caller: f.clone(),
+                            caller: f.to_string(),
                             valid_argc,
                             current_argc: args.len(),
                         }
