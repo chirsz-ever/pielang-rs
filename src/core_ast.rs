@@ -1,6 +1,7 @@
-use std::fmt;
 use crate::ast;
 use crate::utils::{map_result, Ref, Span};
+use fehler::{throw, throws};
+use std::fmt;
 use thiserror::Error;
 
 macro_rules! claim_array {
@@ -59,15 +60,22 @@ pub enum ErrorKind {
         caller: Ref<str>,
         valid_argc: usize,
         current_argc: usize,
-    }
+    },
 }
 
 impl fmt::Display for ErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         use ErrorKind::*;
         match self {
-            IllegalArgumentNumber { caller, valid_argc, current_argc } 
-            => write!(f, "`{}` should take {} arguments, but here is {} arguments.", caller, valid_argc, current_argc)
+            IllegalArgumentNumber {
+                caller,
+                valid_argc,
+                current_argc,
+            } => write!(
+                f,
+                "`{}` should take {} arguments, but here is {} arguments.",
+                caller, valid_argc, current_argc
+            ),
         }
     }
 }
@@ -83,9 +91,10 @@ pub enum Argument {
 /// 将 Pi 表达式、Sigma 表达式展开为单层，箭头表达式转换为 Pi 表达式，
 /// 调用分别转化为函数调用和内建调用，并检查内建调用的合法性，将标识符 U 转换为
 /// core_ast::Expr::U。
-pub fn unfold(e: &ast::Expr) -> Result<Expr<()>, Error> {
+#[throws]
+pub fn unfold(e: &ast::Expr) -> Expr<()> {
     use ast::Expr::*;
-    let ret = match e {
+    match e {
         Literal(_, lit) => Expr::Literal(lit.clone()),
         Identifier(_, id) if &**id == "U" => Expr::U(0),
         Identifier(_, id) => Expr::Identifier(id.clone()),
@@ -95,7 +104,7 @@ pub fn unfold(e: &ast::Expr) -> Result<Expr<()>, Error> {
                 if args.len() == valid_argc {
                     Expr::BuiltinApply(f.clone(), map_result(args, unfold)?)
                 } else {
-                    return Err(Error {
+                    throw!(Error {
                         loc: loc.clone(),
                         erk: ErrorKind::IllegalArgumentNumber {
                             caller: f.clone(),
@@ -149,18 +158,18 @@ pub fn unfold(e: &ast::Expr) -> Result<Expr<()>, Error> {
             }
             e
         }
-    };
-    Ok(ret)
+    }
 }
 
 /// 将列表经过柯里化转换为函数调用
-fn unfold_list(exprs: &[ast::Expr]) -> Result<Expr<()>, Error> {
+#[throws]
+fn unfold_list(exprs: &[ast::Expr]) -> Expr<()> {
     let mut es = exprs.iter();
     let mut f = unfold(es.next().unwrap())?;
     for e in es {
         f = Expr::Apply(Ref::new(f), Ref::new(unfold(e)?));
     }
-    Ok(f)
+    f
 }
 
 /// 通过内建函数名获取其应有的参数数量，如果传入的不是内建函数名，返回 `None`。

@@ -18,5 +18,6 @@ lalrpop = { version = "0.19", features = ["lexer"] }
 lalrpop-util = "0.19"
 structopt = "0.3"
 rustyline = "7.1"
+fehler = "1.0"
 anyhow = "1.0"
 thiserror = "1.0"

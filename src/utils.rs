@@ -1,6 +1,6 @@
-use std::fmt;
 use std::borrow::Borrow;
 use std::cmp::Eq;
+use std::fmt;
 
 /// 引用类型，当前仅为 `std::rc::Rc`，未来或可使用 GC。
 pub type Ref<T> = std::rc::Rc<T>;
