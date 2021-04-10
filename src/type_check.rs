@@ -1,16 +1,17 @@
 use crate::*;
 use ast::Literal;
 use core_ast::*;
+use fehler::{throw, throws};
 
 pub type Env = crate::utils::StackMap<Ref<str>, Type<()>>;
-pub type Result<T> = core::result::Result<T, ()>;
+pub type Error = ();
 
 macro_rules! assert_match {
     (let $p:tt($($i:ident),+) = $e:expr) => {
         let ($($i),+) = if let $p($($i),+) = $e {
             ($($i),+)
         } else {
-            return Err(());
+            throw!(());
         };
     };
 }
@@ -45,9 +46,10 @@ fn gensym() -> Ref<str> {
 
 /// 检查表达式 `e` 属于（已检查的）类型 `ty`，返回检查结果。
 /// 第六种 Judgement，见 Figure B.1。
-pub fn synthesize_with_type<M>(e: &Expr<M>, ty: &Type<()>, env: &Env) -> Result<Expr<()>> {
+#[throws]
+pub fn synthesize_with_type<M>(e: &Expr<M>, ty: &Type<()>, env: &Env) -> Expr<()> {
     use Expr::*;
-    let ret = match &ty {
+    match &ty {
         // FunI-1
         PiExpr(pi_arg, ty_arg, ty_ret) => {
             // 除去外层 Info
@@ -111,21 +113,21 @@ pub fn synthesize_with_type<M>(e: &Expr<M>, ty: &Type<()>, env: &Env) -> Result<
             type_check_same(&ty_e_o, &ty, env)?;
             e_o
         }
-    };
-    Ok(ret)
+    }
 }
 
 /// 对表达式 `e` 进行类型检查，返回检查结果。
 /// 第七种 Judgement，见 Figure B.1。
-pub fn synthesize<M>(e: &Expr<M>, env: &Env) -> Result<(Type<()>, Expr<()>)> {
+#[throws]
+pub fn synthesize<M>(e: &Expr<M>, env: &Env) -> (Type<()>, Expr<()>) {
     use Expr::*;
-    let ret = match e {
-        Info(_, e) => return synthesize(e, env),
+    match e {
+        Info(_, e) => synthesize(e, env)?,
         Literal(lit) => synthesize_literal(lit),
         // Hypothesis
         Identifier(ident) => match env.get(ident) {
             Some(ty) => (ty.clone(), Identifier(ident.clone())),
-            None => return Err(()),
+            None => throw!(()),
         },
         PiExpr(arg, ty, body) => {
             todo!()
@@ -154,17 +156,17 @@ pub fn synthesize<M>(e: &Expr<M>, env: &Env) -> Result<(Type<()>, Expr<()>)> {
                 _ => unreachable!(),
             }
         }
-        LambdaExpr(_, _) => return Err(()),
-    };
-    Ok(ret)
+        LambdaExpr(_, _) => throw!(()),
+    }
 }
 
 /// 判断并计算表达式是一个类型（或 U）。
 /// 第四种 Judgement，见 Figure B.1。
-fn resolve_type<M>(e: &Expr<M>, env: &Env) -> Result<Type<()>> {
+#[throws]
+fn resolve_type<M>(e: &Expr<M>, env: &Env) -> Type<()> {
     use Expr::*;
-    let ret = match e {
-        Info(_, e) => return resolve_type(e, env),
+    match e {
+        Info(_, e) => resolve_type(e, env)?,
         // FunF-1
         PiExpr(arg, ty, ty_ret) => {
             let ty_o = resolve_type(ty, env)?;
@@ -184,42 +186,38 @@ fn resolve_type<M>(e: &Expr<M>, env: &Env) -> Result<Type<()>> {
         U(n) => U(*n),
         //Literal, Lambda, Identifier, Apply
         // El
-        _ => return synthesize_with_type(e, &U(0), env),
-    };
-    Ok(ret)
+        _ => synthesize_with_type(e, &U(0), env)?,
+    }
 }
 
 /// 检查是否相同类型
 /// 第五种 Judgement，见 Figure B.1。
-fn type_check_same(ty1: &Type<()>, ty2: &Type<()>, env: &Env) -> Result<()> {
+#[throws]
+fn type_check_same(ty1: &Type<()>, ty2: &Type<()>, env: &Env) {
     use Expr::*;
     dbg!(ty1, ty2);
     // TODO: 比较前充分计算 ty1 和 ty2
     match (ty1, ty2) {
         (Identifier(id1), Identifier(id2)) => {
-            if id1 == id2 {
-                return Ok(());
-            } else {
-                return Err(());
+            if id1 != id2 {
+                throw!(());
             }
         }
         (U(m), U(n)) => {
-            if m == n {
-                return Ok(());
-            } else {
-                return Err(());
+            if m != n {
+                throw!(());
             }
         }
         _ => {
             todo!()
         }
     }
-    Ok(())
 }
 
 /// 检查是否相同表达式
 /// 第八种 Judgement，见 Figure B.1。
-fn expr_check_same(c1: &Expr<()>, c2: &Expr<()>, ct: &Type<()>, env: &Env) -> Result<()> {
+#[throws]
+fn expr_check_same(c1: &Expr<()>, c2: &Expr<()>, ct: &Type<()>, env: &Env) {
     todo!()
 }
 
