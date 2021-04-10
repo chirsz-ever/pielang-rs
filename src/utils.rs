@@ -1,8 +1,20 @@
+use std::fmt;
 use std::borrow::Borrow;
 use std::cmp::Eq;
 
 /// 引用类型，当前仅为 `std::rc::Rc`，未来或可使用 GC。
 pub type Ref<T> = std::rc::Rc<T>;
+
+/// 在源代码中起始和结束位置，前闭后开
+#[derive(Debug, Clone, Copy)]
+pub struct Span(pub usize, pub usize);
+
+impl fmt::Display for Span {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        let Span(l, r) = self;
+        write!(f, "{}:{}", l, r)
+    }
+}
 
 /// 使用链表实现的层次索引数据结构，适合于表示嵌套作用域
 #[derive(Debug, Clone, Default)]

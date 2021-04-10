@@ -1,6 +1,7 @@
+use std::fmt;
 use crate::ast;
-use crate::utils::map_result;
-use crate::Ref;
+use crate::utils::{map_result, Ref, Span};
+use thiserror::Error;
 
 macro_rules! claim_array {
     ($id:ident $name:ident: [$ty: ty; _] = $value:expr $(;)?) => {
@@ -45,6 +46,32 @@ pub enum Expr<MetaInfo> {
 
 pub type Type<M> = Expr<M>;
 
+#[derive(Debug, Clone, Error)]
+#[error("{loc}: {erk}")]
+pub struct Error {
+    pub loc: Span,
+    pub erk: ErrorKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum ErrorKind {
+    IllegalArgumentNumber {
+        caller: Ref<str>,
+        valid_argc: usize,
+        current_argc: usize,
+    }
+}
+
+impl fmt::Display for ErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        use ErrorKind::*;
+        match self {
+            IllegalArgumentNumber { caller, valid_argc, current_argc } 
+            => write!(f, "`{}` should take {} arguments, but here is {} arguments.", caller, valid_argc, current_argc)
+        }
+    }
+}
+
 /// 标识符，`Dummy` 用于将普通函数类型转换为 Pi 类型时，
 /// 未来或可用于 `_` 语法
 #[derive(Debug, Clone)]
@@ -56,24 +83,26 @@ pub enum Argument {
 /// 将 Pi 表达式、Sigma 表达式展开为单层，箭头表达式转换为 Pi 表达式，
 /// 调用分别转化为函数调用和内建调用，并检查内建调用的合法性，将标识符 U 转换为
 /// core_ast::Expr::U。
-pub fn unfold(e: &ast::Expr) -> Result<Expr<()>, String> {
+pub fn unfold(e: &ast::Expr) -> Result<Expr<()>, Error> {
     use ast::Expr::*;
     let ret = match e {
         Literal(_, lit) => Expr::Literal(lit.clone()),
         Identifier(_, id) if &**id == "U" => Expr::U(0),
         Identifier(_, id) => Expr::Identifier(id.clone()),
-        List(_, exprs) => match &**exprs {
+        List(loc, exprs) => match &**exprs {
             [Identifier(_, f), args @ ..] if get_builtin_argument_number(f).is_some() => {
                 let valid_argc = get_builtin_argument_number(f).unwrap();
                 if args.len() == valid_argc {
                     Expr::BuiltinApply(f.clone(), map_result(args, unfold)?)
                 } else {
-                    return Err(format!(
-                        "`{}` should take {} arguments, but here is {}.",
-                        f,
-                        valid_argc,
-                        args.len()
-                    ));
+                    return Err(Error {
+                        loc: loc.clone(),
+                        erk: ErrorKind::IllegalArgumentNumber {
+                            caller: f.clone(),
+                            valid_argc,
+                            current_argc: args.len(),
+                        }
+                    });
                 }
             }
             _ => unfold_list(exprs)?,
@@ -125,7 +154,7 @@ pub fn unfold(e: &ast::Expr) -> Result<Expr<()>, String> {
 }
 
 /// 将列表经过柯里化转换为函数调用
-fn unfold_list(exprs: &[ast::Expr]) -> Result<Expr<()>, String> {
+fn unfold_list(exprs: &[ast::Expr]) -> Result<Expr<()>, Error> {
     let mut es = exprs.iter();
     let mut f = unfold(es.next().unwrap())?;
     for e in es {

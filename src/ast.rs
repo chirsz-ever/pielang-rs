@@ -1,8 +1,4 @@
-use crate::Ref;
-
-/// 在源代码中起始和结束位置，前闭后开
-#[derive(Debug, Clone, Copy)]
-pub struct Span(pub usize, pub usize);
+use crate::utils::{Ref, Span};
 
 /// 顶层语句允许 define 语句、claim 语句和表达式。
 #[derive(Debug, Clone)]
