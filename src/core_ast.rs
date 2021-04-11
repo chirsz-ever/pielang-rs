@@ -48,13 +48,13 @@ pub enum Expr<MetaInfo> {
 pub type Type<M> = Expr<M>;
 
 impl<M> fmt::Display for Expr<M>
-where M: fmt::Debug
+where M: fmt::Display
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Expr::*;
         match self {
             Info(info, inner) => {
-                write!(f, "[{:?}: {}]", info, inner)
+                write!(f, "[{}: {}]", info, inner)
             }
             Literal(ast::Literal::Atom(atom)) => {
                 write!(f, "'{}", atom)
@@ -149,7 +149,7 @@ impl fmt::Display for Argument {
 /// 调用分别转化为函数调用和内建调用，并检查内建调用的合法性，将标识符 U 转换为
 /// core_ast::Expr::U。
 #[throws]
-pub fn unfold(e: &ast::Expr) -> Expr<()> {
+pub fn unfold(e: &ast::Expr) -> Expr<!> {
     use ast::Expr::*;
     match e {
         Literal(_, lit) => Expr::Literal(lit.clone()),
@@ -233,7 +233,7 @@ pub fn unfold(e: &ast::Expr) -> Expr<()> {
 
 /// 将列表经过柯里化转换为函数调用
 #[throws]
-fn unfold_list(exprs: &[ast::Expr]) -> Expr<()> {
+fn unfold_list(exprs: &[ast::Expr]) -> Expr<!> {
     let mut es = exprs.iter();
     let mut f = unfold(es.next().unwrap())?;
     for e in es {

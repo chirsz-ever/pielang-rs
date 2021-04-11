@@ -1,3 +1,5 @@
+#![feature(never_type)]
+
 use fehler::{throw, throws};
 use pielang::*;
 use rustyline::KeyEvent;
@@ -54,7 +56,7 @@ fn main() -> io::Result<()> {
 }
 
 #[throws]
-fn analyze_expression(expr: &ast::Expr) -> core_ast::Expr<()> {
+fn analyze_expression(expr: &ast::Expr) -> core_ast::Expr<!> {
     core_ast::unfold(expr)?
 }
 

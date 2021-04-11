@@ -4,6 +4,8 @@
 // TODO: 处理 TODO
 // TODO: 实现 check-same
 
+#![feature(never_type)]
+
 use lalrpop_util::lalrpop_mod;
 
 lalrpop_mod!(#[allow(clippy::all)] pub syntax);
