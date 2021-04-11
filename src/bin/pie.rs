@@ -26,6 +26,7 @@ struct Opt {
 }
 
 fn main() -> io::Result<()> {
+    pretty_env_logger::init();
     let opt = Opt::from_args();
 
     // 如果有文件参数，先解释文件

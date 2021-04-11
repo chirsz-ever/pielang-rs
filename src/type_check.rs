@@ -2,6 +2,8 @@ use crate::*;
 use ast::Literal;
 use core_ast::*;
 use fehler::{throw, throws};
+use log_derive::{logfn, logfn_inputs};
+use std::fmt::Debug;
 
 pub type Env = crate::utils::StackMap<Ref<str>, Type<()>>;
 pub type Error = ();
@@ -16,22 +18,35 @@ macro_rules! assert_match {
     };
 }
 
+macro_rules! assert_match_array {
+    (let [$($i:ident),+ $(,)?] = $e:expr) => {
+        let ($($i),+) = if let [$($i),+] = $e {
+            ($($i),+)
+        } else {
+            throw!(());
+        };
+    };
+}
+
 // TODO: 使用 De Bruijn 方法解决变量名、作用域的各种问题
 
 /// 执行 expr[var/e]，将 expr 中自由出现的 var 替换为 e，e 应当是没有自由变量的。
-fn substitute<M>(expr: &Expr<M>, var: &str, e: &Expr<M>, env: &Env) -> Expr<()> {
+#[logfn_inputs(TRACE)]
+fn substitute<M: Debug>(expr: &Expr<M>, var: &str, e: &Expr<M>, env: &Env) -> Expr<()> {
     todo!()
 }
 
 /// 对常用的 Argument 模式的简写
 #[inline]
-fn substitute_arg(expr: &Expr<()>, var: &Argument, e: &Expr<()>, env: &Env) -> Expr<()> {
-    match var {
+#[logfn_inputs(TRACE)]
+fn substitute_arg(expr: &Expr<()>, arg: &Argument, e: &Expr<()>, env: &Env) -> Expr<()> {
+    match arg {
         Argument::Symbol(sym) => substitute(expr, sym, e, env),
         Argument::Dummy => expr.clone(),
     }
 }
 
+#[logfn_inputs(TRACE)]
 fn env_ext_arg(env: &Env, arg: &Argument, ty: &Type<()>) -> Env {
     match arg {
         Argument::Symbol(sym) => env.insert(sym.clone(), ty.clone()),
@@ -40,6 +55,7 @@ fn env_ext_arg(env: &Env, arg: &Argument, ty: &Type<()>) -> Env {
 }
 
 /// 产生随机符号
+#[logfn_inputs(TRACE)]
 fn gensym() -> Ref<str> {
     todo!()
 }
@@ -47,7 +63,8 @@ fn gensym() -> Ref<str> {
 /// 检查表达式 `e` 属于（已检查的）类型 `ty`，返回检查结果。
 /// 第六种 Judgement，见 Figure B.1。
 #[throws]
-pub fn synthesize_with_type<M>(e: &Expr<M>, ty: &Type<()>, env: &Env) -> Expr<()> {
+#[logfn_inputs(TRACE)]
+pub fn synthesize_with_type<M: Debug>(e: &Expr<M>, ty: &Type<()>, env: &Env) -> Expr<()> {
     use Expr::*;
     match (e, ty) {
         // FunI-1
@@ -113,7 +130,8 @@ pub fn synthesize_with_type<M>(e: &Expr<M>, ty: &Type<()>, env: &Env) -> Expr<()
 /// 对表达式 `e` 进行类型检查，返回检查结果。
 /// 第七种 Judgement，见 Figure B.1。
 #[throws]
-pub fn synthesize<M>(e: &Expr<M>, env: &Env) -> (Type<()>, Expr<()>) {
+#[logfn_inputs(TRACE)]
+pub fn synthesize<M: Debug>(e: &Expr<M>, env: &Env) -> (Type<()>, Expr<()>) {
     use Expr::*;
     match e {
         Info(_, e) => synthesize(e, env)?,
@@ -157,7 +175,8 @@ pub fn synthesize<M>(e: &Expr<M>, env: &Env) -> (Type<()>, Expr<()>) {
 /// 判断并计算表达式是一个类型（或 U）。
 /// 第四种 Judgement，见 Figure B.1。
 #[throws]
-fn resolve_type<M>(e: &Expr<M>, env: &Env) -> Type<()> {
+#[logfn_inputs(TRACE)]
+fn resolve_type<M: Debug>(e: &Expr<M>, env: &Env) -> Type<()> {
     use Expr::*;
     match e {
         Info(_, e) => resolve_type(e, env)?,
@@ -187,9 +206,9 @@ fn resolve_type<M>(e: &Expr<M>, env: &Env) -> Type<()> {
 /// 检查是否相同类型
 /// 第五种 Judgement，见 Figure B.1。
 #[throws]
+#[logfn_inputs(TRACE)]
 fn type_check_same(ty1: &Type<()>, ty2: &Type<()>, env: &Env) {
     use Expr::*;
-    dbg!(ty1, ty2);
     // TODO: 比较前充分计算 ty1 和 ty2
     match (ty1, ty2) {
         (Identifier(id1), Identifier(id2)) => {
@@ -211,6 +230,7 @@ fn type_check_same(ty1: &Type<()>, ty2: &Type<()>, env: &Env) {
 /// 检查是否相同表达式
 /// 第八种 Judgement，见 Figure B.1。
 #[throws]
+#[logfn_inputs(TRACE)]
 fn expr_check_same(c1: &Expr<()>, c2: &Expr<()>, ct: &Type<()>, env: &Env) {
     todo!()
 }
