@@ -54,6 +54,29 @@ impl<K, V> StackMap<K, V> {
     }
 }
 
+impl<K, V> fmt::Display for StackMap<K, V>
+where 
+    K: fmt::Display,
+    V: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "{{")?;
+        let mut node = &self.0;
+        match node {
+            Some(head) => {
+                write!(f, "{}: {}", head.kv.0, head.kv.1)?;
+                node = &head.next;
+            }
+            None => {}
+        }
+        while let Some(cur) = node {
+            write!(f, " ,{}: {}", cur.kv.0, cur.kv.1)?;
+            node = &cur.next;
+        }
+        write!(f, "}}")
+    }
+}
+
 pub fn map_result<T, U, E>(
     it: impl IntoIterator<Item = T>,
     mut f: impl FnMut(T) -> Result<U, E>,

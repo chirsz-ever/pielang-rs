@@ -47,6 +47,53 @@ pub enum Expr<MetaInfo> {
 
 pub type Type<M> = Expr<M>;
 
+impl<M> fmt::Display for Expr<M>
+where M: fmt::Debug
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use Expr::*;
+        match self {
+            Info(info, inner) => {
+                write!(f, "[{:?}: {}]", info, inner)
+            }
+            Literal(ast::Literal::Atom(atom)) => {
+                write!(f, "'{}", atom)
+            }
+            Literal(ast::Literal::Nat(n)) => {
+                write!(f, "{}", n)
+            }
+            Identifier(id) => {
+                write!(f, "{}", id)
+            }
+            LambdaExpr(arg, body) => {
+                write!(f, "(λ ({}) {})", arg, body)
+            }
+            PiExpr(arg, ty, body) => {
+                write!(f, "(Π (({} {})) {})", arg, ty, body)
+            }
+            SigmaExpr(arg, ty, body) => {
+                write!(f, "(Σ (({} {})) {})", arg, ty, body)
+            }
+            Apply(fun, arg) => {
+                write!(f, "({} {})", fun, arg)
+            }
+            BuiltinApply(bf, args) => {
+                write!(f, "({}", bf)?;
+                for arg in args {
+                    write!(f, " {}", arg)?;
+                }
+                write!(f, ")")
+            }
+            U(0) => {
+                write!(f, "U")
+            }
+            U(n) => {
+                write!(f, "(U {})", n)
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Error)]
 #[error("{loc}: {erk}")]
 pub struct Error {
@@ -86,6 +133,15 @@ impl fmt::Display for ErrorKind {
 pub enum Argument {
     Dummy,
     Symbol(Ref<str>),
+}
+
+impl fmt::Display for Argument {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Argument::Dummy => write!(f, "_"),
+            Argument::Symbol(sym) => write!(f, "{}", sym),
+        }
+    }
 }
 
 /// 将 Pi 表达式、Sigma 表达式展开为单层，箭头表达式转换为 Pi 表达式，

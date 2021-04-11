@@ -123,7 +123,7 @@ fn repl() {
                                 continue;
                             }
                         };
-                        println!("{:?}: {:?}", e, ty);
+                        println!("{}: {}", e, ty);
                     }
                     Err(e) => {
                         println!("Error: {}", e);
