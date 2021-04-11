@@ -145,6 +145,7 @@ impl fmt::Display for Argument {
 }
 
 /// 将 Pi 表达式、Sigma 表达式展开为单层，箭头表达式转换为 Pi 表达式，
+/// Pair 表达式转换为 Sigma 表达式，
 /// 调用分别转化为函数调用和内建调用，并检查内建调用的合法性，将标识符 U 转换为
 /// core_ast::Expr::U。
 #[throws]
@@ -169,6 +170,19 @@ pub fn unfold(e: &ast::Expr) -> Expr<()> {
                         }
                     });
                 }
+            }
+            [Identifier(_, f), ty_a, ty_d] if &**f == "Pair" => {
+                Expr::SigmaExpr(Argument::Dummy, Ref::new(unfold(ty_a)?), Ref::new(unfold(ty_d)?))
+            }
+            [Identifier(loc, f), args @ ..] if &**f == "Pair" => {
+                throw!(Error {
+                    loc: loc.clone(),
+                    erk: ErrorKind::IllegalArgumentNumber {
+                        caller: f.to_string(),
+                        valid_argc: 2,
+                        current_argc: args.len(),
+                    }
+                })
             }
             _ => unfold_list(exprs)?,
         },

@@ -108,8 +108,11 @@ pub fn synthesize_with_type<M: fmt::Debug>(e: &Expr<M>, ty: &Type<()>, env: &Env
                 }
             }
         }
-        (BuiltinApply(bf, args), SigmaExpr(sigma_arg, ty_arg, ty_ret)) if &**bf == "cons" => {
-            todo!()
+        (BuiltinApply(bf, args), SigmaExpr(arg, ty_a, ty_d)) if &**bf == "cons" => {
+            assert_match_array!(let [a, d] = &**args);
+            let a_o = synthesize_with_type(a, ty_a, env)?;
+            let d_o = synthesize_with_type(d, &substitute_arg(ty_d, arg, &a_o, env), env)?;
+            BuiltinApply(bf.clone(), vec![a_o, d_o])
         }
         (_, BuiltinApply(bf, args)) => {
             todo!()
