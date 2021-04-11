@@ -49,15 +49,9 @@ fn gensym() -> Ref<str> {
 #[throws]
 pub fn synthesize_with_type<M>(e: &Expr<M>, ty: &Type<()>, env: &Env) -> Expr<()> {
     use Expr::*;
-    match &ty {
+    match (e, ty) {
         // FunI-1
-        PiExpr(pi_arg, ty_arg, ty_ret) => {
-            // 除去外层 Info
-            let mut e = e;
-            while let Info(_, inner) = e {
-                e = inner;
-            }
-            assert_match!(let LambdaExpr(arg, r) = e);
+        (LambdaExpr(arg, r), PiExpr(pi_arg, ty_arg, ty_ret)) => {
             // TODO: 优化此处
             match (arg, pi_arg) {
                 (Argument::Dummy, Argument::Dummy) => {
@@ -101,10 +95,10 @@ pub fn synthesize_with_type<M>(e: &Expr<M>, ty: &Type<()>, env: &Env) -> Expr<()
                 }
             }
         }
-        SigmaExpr(sigma_arg, ty_arg, ty_ret) => {
+        (BuiltinApply(bf, args), SigmaExpr(sigma_arg, ty_arg, ty_ret)) if &**bf == "cons" => {
             todo!()
         }
-        BuiltinApply(bf, args) => {
+        (_, BuiltinApply(bf, args)) => {
             todo!()
         }
         // Switch
