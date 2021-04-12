@@ -55,7 +55,7 @@ impl<K, V> StackMap<K, V> {
 }
 
 impl<K, V> fmt::Display for StackMap<K, V>
-where 
+where
     K: fmt::Display,
     V: fmt::Display,
 {

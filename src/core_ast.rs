@@ -48,7 +48,8 @@ pub enum Expr<MetaInfo> {
 pub type Type<M> = Expr<M>;
 
 impl<M> fmt::Display for Expr<M>
-where M: fmt::Display
+where
+    M: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Expr::*;
@@ -171,9 +172,11 @@ pub fn unfold(e: &ast::Expr) -> Expr<!> {
                     });
                 }
             }
-            [Identifier(_, f), ty_a, ty_d] if &**f == "Pair" => {
-                Expr::SigmaExpr(Argument::Dummy, Ref::new(unfold(ty_a)?), Ref::new(unfold(ty_d)?))
-            }
+            [Identifier(_, f), ty_a, ty_d] if &**f == "Pair" => Expr::SigmaExpr(
+                Argument::Dummy,
+                Ref::new(unfold(ty_a)?),
+                Ref::new(unfold(ty_d)?),
+            ),
             [Identifier(loc, f), args @ ..] if &**f == "Pair" => {
                 throw!(Error {
                     loc: loc.clone(),
