@@ -287,7 +287,10 @@ fn synthesize_literal(lit: &Literal) -> (Type<!>, Expr<!>) {
 }
 
 pub fn default_environment() -> Env {
+    let ty_triv: Ref<str> = "Trivial".into();
     Env::new()
         .insert("Nat".into(), Expr::U(0))
         .insert("Atom".into(), Expr::U(0))
+        .insert("sole".into(), Expr::Identifier(ty_triv.clone()))
+        .insert(ty_triv, Expr::U(0))
 }
