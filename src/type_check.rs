@@ -56,12 +56,25 @@ fn gensym() -> Ref<str> {
     todo!()
 }
 
+#[inline]
+#[throws]
+fn switch_rule<M: fmt::Display>(e: &Expr<M>, ty: &Type<!>, env: &Env) -> Expr<!> {
+    let (ty_e_o, e_o) = synthesize(e, env)?;
+    type_check_same(&ty_e_o, &ty, env)?;
+    e_o
+}
+
 /// 检查表达式 `e` 属于（已检查的）类型 `ty`，返回检查结果。
 /// 第六种 Judgement，见 Figure B.1。
+/// 对于构造式，有唯一相关的类型与之匹配；
+/// 其它表达式则应用 Which 规则：试图综合得出其类型，再将结果与所给类型比较。
 #[throws]
 pub fn synthesize_with_type<M: fmt::Display>(e: &Expr<M>, ty: &Type<!>, env: &Env) -> Expr<!> {
     use Expr::*;
     log::trace!("check {} is a {}", e, ty);
+    if let Info(_, e) = e {
+        return synthesize_with_type(e, ty, env)?
+    }
     match (e, ty) {
         // FunI-1
         (LambdaExpr(arg, r), PiExpr(pi_arg, ty_arg, ty_ret)) => {
@@ -114,14 +127,30 @@ pub fn synthesize_with_type<M: fmt::Display>(e: &Expr<M>, ty: &Type<!>, env: &En
             let d_o = synthesize_with_type(d, &substitute_arg(ty_d, arg, &a_o, env), env)?;
             BuiltinApply(bf.clone(), vec![a_o, d_o])
         }
-        (_, BuiltinApply(bf, args)) => {
-            todo!()
+        (Identifier(ident), BuiltinApply(ty_bf, ty_args)) => {
+            match (&**ident, &**ty_bf, &**ty_args) {
+                // ListI-1
+                ("nil", "List", [_ty]) => {
+                    Identifier(ident.clone())
+                }
+                _ => switch_rule(e, ty, env)?
+            }
+        }
+        (BuiltinApply(bf, args), BuiltinApply(ty_bf, ty_args)) => {
+            match (&**bf, &**args, &**ty_bf, &**ty_args) {
+                // ListI-3，TLY 中不存在，我自己加的，使 (the (List (-> Nat Nat)) (:: (lambda (x) x) nil)) 这样的
+                // 表达式能推导出类型。
+                ("::", [e, es], "List", [ty_1]) => {
+                    let e_o = synthesize_with_type(e, ty_1, env)?;
+                    let es_o = synthesize_with_type(es, ty, env)?;
+                    BuiltinApply(bf.clone(), vec![e_o, es_o])
+                }
+                _ => switch_rule(e, ty, env)?
+            }
         }
         // Switch
         _ => {
-            let (ty_e_o, e_o) = synthesize(e, env)?;
-            type_check_same(&ty_e_o, &ty, env)?;
-            e_o
+            switch_rule(e, ty, env)?
         }
     }
 }
@@ -164,6 +193,13 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                     let expr_o = synthesize_with_type(expr, &ty_o, env)?;
                     (ty_o, expr_o)
                 }
+                // ListI-2
+                ("::", [e, es]) => {
+                    let (ty_e_o, e_o) = synthesize(e, env)?;
+                    let ty_list = BuiltinApply("List".into(), vec![ty_e_o]);
+                    let es_o = synthesize_with_type(es, &ty_list, env)?;
+                    (ty_list, BuiltinApply(bf.clone(), vec![e_o, es_o]))
+                }
                 _ => unreachable!(),
             }
         }
@@ -192,7 +228,14 @@ fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> Type<!> {
             SigmaExpr(arg.clone(), Ref::new(ty_o), Ref::new(ty_d_o))
         }
         BuiltinApply(bf, args) => {
-            todo!()
+            match (&**bf, &**args) {
+                // ListF
+                ("List", [ty_e]) => {
+                    let ty_e_o = resolve_type(ty_e, env)?;
+                    BuiltinApply(bf.clone(), vec![ty_e_o])
+                }
+                _ => unreachable!(),
+            }
         }
         // UF
         U(n) => U(*n),
