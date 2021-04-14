@@ -121,7 +121,7 @@ fn repl() {
                         let ty = match tc::synthesize(&e, &env) {
                             Ok((ty, _)) => ty,
                             Err(e) => {
-                                println!("Type Error: {:?}", e);
+                                println!("Type Error: {}", e);
                                 continue;
                             }
                         };

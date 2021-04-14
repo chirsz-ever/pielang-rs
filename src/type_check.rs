@@ -1,29 +1,91 @@
 use crate::*;
 use ast::Literal;
-use core_ast::*;
+use core_ast::{Argument, Expr, Type};
 use fehler::{throw, throws};
 use std::fmt;
+use thiserror::Error;
+use utils::Span;
 
 pub type Env = crate::utils::StackMap<Ref<str>, Type<!>>;
-pub type Error = ();
 
-macro_rules! assert_match {
+#[derive(Debug, Clone, Error)]
+pub struct Error {
+    pub loc: Option<Span>,
+    pub erk: ErrorKind,
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error { loc: None, erk } => write!(f, "{}", erk),
+            Error {
+                loc: Some(span),
+                erk,
+            } => write!(f, "{}:{}", span, erk),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ErrorKind {
+    TypeNotMatch { expected: String, given: String },
+    CannotInferType { expr: String },
+    UndefinedIdentifier { ident: String },
+    NotSame(String, String),
+}
+
+impl fmt::Display for ErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use ErrorKind::*;
+        match self {
+            TypeNotMatch { expected, given } => {
+                write!(f, "expect `{}`, but get a `{}`", expected, given)
+            }
+            CannotInferType { expr } => {
+                write!(f, "cannot infer the type of `{}`", expr)
+            }
+            UndefinedIdentifier { ident } => {
+                write!(f, "undefined identifier: `{}`", ident)
+            }
+            NotSame(x, y) => {
+                write!(f, "`{}` and `{}` are not the same", x, y)
+            }
+        }
+    }
+}
+
+impl From<ErrorKind> for Error {
+    fn from(erk: ErrorKind) -> Self {
+        Error { loc: None, erk }
+    }
+}
+
+macro_rules! try_match {
     (let $p:tt($($i:ident),+) = $e:expr) => {
         let ($($i),+) = if let $p($($i),+) = $e {
             ($($i),+)
         } else {
-            throw!(());
+            throw!(ErrorKind::TypeNotMatch {
+                expected: format!(stringify!($p)),
+                given: format!("{}", $e),
+            })
         };
     };
 }
 
-macro_rules! assert_match_array {
-    (let [$($i:ident),+ $(,)?] = $e:expr) => {
+macro_rules! match_array {
+    (let [$($i:ident),+ $(,)?] = $e:expr, $($on_fail:tt)+) => {
         let ($($i),+) = if let [$($i),+] = $e {
             ($($i),+)
         } else {
-            throw!(());
+            $($on_fail)+
         };
+    };
+}
+
+macro_rules! match_builtin_args {
+    (let [$($i:ident),+ $(,)?] = $e:expr) => {
+        match_array!(let [$($i),+] = $e, panic!("Error: expect "))
     };
 }
 
@@ -73,7 +135,7 @@ pub fn synthesize_with_type<M: fmt::Display>(e: &Expr<M>, ty: &Type<!>, env: &En
     use Expr::*;
     log::trace!("check {} is a {}", e, ty);
     if let Info(_, e) = e {
-        return synthesize_with_type(e, ty, env)?
+        return synthesize_with_type(e, ty, env)?;
     }
     match (e, ty) {
         // FunI-1
@@ -122,7 +184,7 @@ pub fn synthesize_with_type<M: fmt::Display>(e: &Expr<M>, ty: &Type<!>, env: &En
             }
         }
         (BuiltinApply(bf, args), SigmaExpr(arg, ty_a, ty_d)) if &**bf == "cons" => {
-            assert_match_array!(let [a, d] = &**args);
+            match_builtin_args!(let [a, d] = &**args);
             let a_o = synthesize_with_type(a, ty_a, env)?;
             let d_o = synthesize_with_type(d, &substitute_arg(ty_d, arg, &a_o, env), env)?;
             BuiltinApply(bf.clone(), vec![a_o, d_o])
@@ -130,10 +192,8 @@ pub fn synthesize_with_type<M: fmt::Display>(e: &Expr<M>, ty: &Type<!>, env: &En
         (Identifier(ident), BuiltinApply(ty_bf, ty_args)) => {
             match (&**ident, &**ty_bf, &**ty_args) {
                 // ListI-1
-                ("nil", "List", [_ty]) => {
-                    Identifier(ident.clone())
-                }
-                _ => switch_rule(e, ty, env)?
+                ("nil", "List", [_ty]) => Identifier(ident.clone()),
+                _ => switch_rule(e, ty, env)?,
             }
         }
         (BuiltinApply(bf, args), BuiltinApply(ty_bf, ty_args)) => {
@@ -145,13 +205,11 @@ pub fn synthesize_with_type<M: fmt::Display>(e: &Expr<M>, ty: &Type<!>, env: &En
                     let es_o = synthesize_with_type(es, ty, env)?;
                     BuiltinApply(bf.clone(), vec![e_o, es_o])
                 }
-                _ => switch_rule(e, ty, env)?
+                _ => switch_rule(e, ty, env)?,
             }
         }
         // Switch
-        _ => {
-            switch_rule(e, ty, env)?
-        }
+        _ => switch_rule(e, ty, env)?,
     }
 }
 
@@ -167,7 +225,9 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
         // Hypothesis
         Identifier(ident) => match env.get(ident) {
             Some(ty) => (ty.clone(), Identifier(ident.clone())),
-            None => throw!(()),
+            None => throw!(ErrorKind::UndefinedIdentifier {
+                ident: ident.to_string()
+            }),
         },
         PiExpr(arg, ty, body) => {
             todo!()
@@ -178,7 +238,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
         // FunE-1
         Apply(f, arg) => {
             let (ty_f, f_o) = synthesize(f, env)?;
-            assert_match!(let PiExpr(var, ty_arg, ty_ret) = ty_f);
+            try_match!(let PiExpr(var, ty_arg, ty_ret) = ty_f);
             let arg_o = synthesize_with_type(arg, &ty_arg, env)?;
             let ty = substitute_arg(&ty_ret, &var, &arg_o, env);
             (ty, Apply(Ref::new(f_o), Ref::new(arg_o)))
@@ -203,7 +263,9 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                 _ => unreachable!(),
             }
         }
-        LambdaExpr(_, _) => throw!(()),
+        _ => throw!(ErrorKind::CannotInferType {
+            expr: format!("{}", e)
+        }),
     }
 }
 
@@ -247,22 +309,23 @@ fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> Type<!> {
 
 /// 检查是否相同类型
 /// 第五种 Judgement，见 Figure B.1。
+#[inline]
 #[throws]
 fn type_check_same(ty1: &Type<!>, ty2: &Type<!>, env: &Env) {
+    use Expr::*;
+    log::trace!("check if {} and {} are the same type", ty1, ty2);
+    if !is_type_check_same(ty1, ty2, env) {
+        throw!(ErrorKind::NotSame(ty1.to_string(), ty2.to_string()));
+    }
+}
+
+fn is_type_check_same(ty1: &Type<!>, ty2: &Type<!>, env: &Env) -> bool {
     use Expr::*;
     log::trace!("check {} and {} are the same type", ty1, ty2);
     // TODO: 比较前充分计算 ty1 和 ty2
     match (ty1, ty2) {
-        (Identifier(id1), Identifier(id2)) => {
-            if id1 != id2 {
-                throw!(());
-            }
-        }
-        (U(m), U(n)) => {
-            if m != n {
-                throw!(());
-            }
-        }
+        (Identifier(id1), Identifier(id2)) => id1 == id2,
+        (U(m), U(n)) => m == n,
         _ => {
             todo!()
         }
