@@ -52,6 +52,31 @@ impl<K, V> StackMap<K, V> {
             next: self.0.clone(),
         })))
     }
+
+    pub fn iter(&self) -> StakMapIter<'_, K, V> {
+        StakMapIter {
+            curr: self.0.as_ref().map(|n| &**n),
+        }
+    }
+}
+
+pub struct StakMapIter<'a, K, V> {
+    curr: Option<&'a StackMapNode<K, V>>,
+}
+
+impl<'a, K, V> Iterator for StakMapIter<'a, K, V> {
+    type Item = (&'a K, &'a V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.curr {
+            None => None,
+            Some(StackMapNode { kv, next }) => {
+                let (k, v) = kv;
+                self.curr = next.as_ref().map(|n| &**n);
+                Some((k, v))
+            }
+        }
+    }
 }
 
 impl<K, V> fmt::Display for StackMap<K, V>
