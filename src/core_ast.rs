@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::utils::{map_result, Ref, Span};
+use crate::utils::*;
 use fehler::{throw, throws};
 use std::fmt;
 use thiserror::Error;
@@ -14,42 +14,51 @@ macro_rules! claim_array {
 
 /// 表达式包含位置信息和元信息（类型等）
 #[derive(Debug, Clone)]
-pub enum Expr<MetaInfo> {
+pub enum Expr<MetaInfo, Variable = DBI> {
     /// 用于在抽象代码树中插入信息的中间层。
-    Info(MetaInfo, Ref<Expr<MetaInfo>>),
+    Info(MetaInfo, Ref<Expr<MetaInfo, Variable>>),
 
     /// 字面量
     Literal(ast::Literal),
 
     /// 标识符，表示变量、函数、类型等
-    Identifier(Ref<str>),
+    Identifier(Variable),
 
     /// `(λ (ident) expr)`，被转换为单层
-    LambdaExpr(Argument, Ref<Expr<MetaInfo>>),
+    LambdaExpr(Argument, Ref<Expr<MetaInfo, Variable>>),
 
     /// `(Π ((ident expr)) expr)`，被转换为单层
     /// 并将箭头表达式转换为 Π 表达式
-    PiExpr(Argument, Ref<Type<MetaInfo>>, Ref<Expr<MetaInfo>>),
+    PiExpr(
+        Argument,
+        Ref<Type<MetaInfo, Variable>>,
+        Ref<Expr<MetaInfo, Variable>>,
+    ),
 
     /// `(Σ ((ident expr)) expr)`，被转换为单层
-    SigmaExpr(Argument, Ref<Type<MetaInfo>>, Ref<Expr<MetaInfo>>),
+    SigmaExpr(
+        Argument,
+        Ref<Type<MetaInfo, Variable>>,
+        Ref<Expr<MetaInfo, Variable>>,
+    ),
 
     /// 函数调用，经过柯里化转换为只有一个参数
-    Apply(Ref<Expr<MetaInfo>>, Ref<Expr<MetaInfo>>),
+    Apply(Ref<Expr<MetaInfo, Variable>>, Ref<Expr<MetaInfo, Variable>>),
 
-    /// 内建调用
+    /// 内建调用，用长度为 0 的 [`Vec`] 表示单例内建对象如 `nil`。
     // 这里或许可以用两层 `Info` 给第一参数加上元信息
-    BuiltinApply(Ref<str>, Vec<Expr<MetaInfo>>),
+    BuiltinApply(Ref<str>, Vec<Expr<MetaInfo, Variable>>),
 
     /// 类型的类型，后面的数字为 Universe Hierarchy 准备，目前统一是 0
     U(u64),
 }
 
-pub type Type<M> = Expr<M>;
+pub type Type<M, V = DBI> = Expr<M, V>;
 
-impl<M> fmt::Display for Expr<M>
+impl<M, V> fmt::Display for Expr<M, V>
 where
     M: fmt::Display,
+    V: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Expr::*;
@@ -79,6 +88,9 @@ where
                 write!(f, "({} {})", fun, arg)
             }
             BuiltinApply(bf, args) => {
+                if args.len() == 0 {
+                    return write!(f, "{}", bf);
+                }
                 write!(f, "({}", bf)?;
                 for arg in args {
                     write!(f, " {}", arg)?;
@@ -93,13 +105,6 @@ where
             }
         }
     }
-}
-
-#[derive(Debug, Clone, Error)]
-#[error("{loc}: {erk}")]
-pub struct Error {
-    pub loc: Span,
-    pub erk: ErrorKind,
 }
 
 #[derive(Debug, Clone)]
@@ -128,6 +133,8 @@ impl fmt::Display for ErrorKind {
     }
 }
 
+pub type Error = LocatedError<ErrorKind>;
+
 /// 标识符，`Dummy` 用于将普通函数类型转换为 Pi 类型时，
 /// 未来或可用于 `_` 语法
 #[derive(Debug, Clone)]
@@ -150,12 +157,15 @@ impl fmt::Display for Argument {
 /// 调用分别转化为函数调用和内建调用，并检查内建调用的合法性，将标识符 U 转换为
 /// core_ast::Expr::U。
 #[throws]
-pub fn unfold(e: &ast::Expr) -> Expr<!> {
+pub fn unfold(e: &ast::Expr) -> Expr<!, Ref<str>> {
     use ast::Expr::*;
     match e {
         Literal(_, lit) => Expr::Literal(lit.clone()),
-        Identifier(_, id) if &**id == "U" => Expr::U(0),
-        Identifier(_, id) => Expr::Identifier(id.clone()),
+        Identifier(_, id) => match &**id {
+            "U" => Expr::U(0),
+            _ if PIE_BUILTIN_SINGLETONS.contains(&&**id) => Expr::BuiltinApply(id.clone(), vec![]),
+            _ => Expr::Identifier(id.clone()),
+        },
         List(loc, exprs) => match &**exprs {
             [Identifier(_, f), args @ ..] if get_builtin_argument_number(f).is_some() => {
                 let valid_argc = get_builtin_argument_number(f).unwrap();
@@ -163,7 +173,7 @@ pub fn unfold(e: &ast::Expr) -> Expr<!> {
                     Expr::BuiltinApply(f.clone(), map_result(args, unfold)?)
                 } else {
                     throw!(Error {
-                        loc: loc.clone(),
+                        loc: Some(loc.clone()),
                         erk: ErrorKind::IllegalArgumentNumber {
                             caller: f.to_string(),
                             valid_argc,
@@ -179,7 +189,7 @@ pub fn unfold(e: &ast::Expr) -> Expr<!> {
             ),
             [Identifier(loc, f), args @ ..] if &**f == "Pair" => {
                 throw!(Error {
-                    loc: loc.clone(),
+                    loc: Some(loc.clone()),
                     erk: ErrorKind::IllegalArgumentNumber {
                         caller: f.to_string(),
                         valid_argc: 2,
@@ -236,7 +246,7 @@ pub fn unfold(e: &ast::Expr) -> Expr<!> {
 
 /// 将列表经过柯里化转换为函数调用
 #[throws]
-fn unfold_list(exprs: &[ast::Expr]) -> Expr<!> {
+fn unfold_list(exprs: &[ast::Expr]) -> Expr<!, Ref<str>> {
     let mut es = exprs.iter();
     let mut f = unfold(es.next().unwrap())?;
     for e in es {
@@ -253,6 +263,20 @@ fn get_builtin_argument_number(fname: &str) -> Option<usize> {
         }
     }
     None
+}
+
+// 内建单例对象，其后是类型等级
+claim_array! {
+const PIE_BUILTIN_SINGLETONS: [&str; _] = [
+    "Atom",
+    "Nat",
+    "zero",
+    "nil",
+    "vecnil",
+    "Trivial",
+    "sole",
+    "Absurd",
+];
 }
 
 // 内建函数名及参数数

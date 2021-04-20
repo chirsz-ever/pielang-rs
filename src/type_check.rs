@@ -1,36 +1,19 @@
-use crate::*;
+use crate::{ast, core_ast, utils};
 use ast::Literal;
 use core_ast::{Argument, Expr, Type};
 use fehler::{throw, throws};
 use std::fmt;
 use thiserror::Error;
-use utils::Span;
+use utils::{LocatedError, Ref, Span, DBI};
 
-pub type Env = crate::utils::StackMap<Ref<str>, Type<!>>;
+pub type Env = crate::utils::StackMap<Type<!>, ()>;
 
-#[derive(Debug, Clone, Error)]
-pub struct Error {
-    pub loc: Option<Span>,
-    pub erk: ErrorKind,
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Error { loc: None, erk } => write!(f, "{}", erk),
-            Error {
-                loc: Some(span),
-                erk,
-            } => write!(f, "{}:{}", span, erk),
-        }
-    }
-}
+type Error = LocatedError<ErrorKind>;
 
 #[derive(Debug, Clone)]
 pub enum ErrorKind {
     TypeNotMatch { expected: String, given: String },
     CannotInferType { expr: String },
-    UndefinedIdentifier { ident: String },
     NotSame(String, String),
 }
 
@@ -39,24 +22,15 @@ impl fmt::Display for ErrorKind {
         use ErrorKind::*;
         match self {
             TypeNotMatch { expected, given } => {
-                write!(f, "expect `{}`, but get a `{}`", expected, given)
+                write!(f, "expect a {}, but get `{}`", expected, given)
             }
             CannotInferType { expr } => {
                 write!(f, "cannot infer the type of `{}`", expr)
-            }
-            UndefinedIdentifier { ident } => {
-                write!(f, "undefined identifier: `{}`", ident)
             }
             NotSame(x, y) => {
                 write!(f, "`{}` and `{}` are not the same", x, y)
             }
         }
-    }
-}
-
-impl From<ErrorKind> for Error {
-    fn from(erk: ErrorKind) -> Self {
-        Error { loc: None, erk }
     }
 }
 
@@ -92,7 +66,7 @@ macro_rules! match_builtin_args {
 // TODO: 使用 De Bruijn 方法解决变量名、作用域的各种问题
 
 /// 执行 expr[var/e]，将 expr 中自由出现的 var 替换为 e，e 应当是没有自由变量的。
-fn substitute<M: fmt::Display>(expr: &Expr<M>, var: &str, e: &Expr<M>, env: &Env) -> Expr<!> {
+fn substitute(expr: &Expr<!>, var: &str, e: &Expr<!>, env: &Env) -> Expr<!> {
     log::trace!("substitute {:?} to {} in {}", var, e, expr);
     todo!()
 }
@@ -106,16 +80,14 @@ fn substitute_arg(expr: &Expr<!>, arg: &Argument, e: &Expr<!>, env: &Env) -> Exp
     }
 }
 
-fn env_ext_arg(env: &Env, arg: &Argument, ty: &Type<!>) -> Env {
-    match arg {
-        Argument::Symbol(sym) => env.insert(sym.clone(), ty.clone()),
-        Argument::Dummy => env.clone(),
-    }
+#[inline]
+fn env_ext(env: &Env, ty: &Type<!>) -> Env {
+    env.insert(ty.clone(), ())
 }
 
-/// 产生随机符号
-fn gensym() -> Ref<str> {
-    todo!()
+fn env_get_nth_type(env: &Env, n: usize) -> &Type<!> {
+    // 经过作用域检查，保证不会 panic
+    env.iter().nth(n).map(|(k, _)| k).unwrap()
 }
 
 #[inline]
@@ -140,48 +112,13 @@ pub fn synthesize_with_type<M: fmt::Display>(e: &Expr<M>, ty: &Type<!>, env: &En
     match (e, ty) {
         // FunI-1
         (LambdaExpr(arg, r), PiExpr(pi_arg, ty_arg, ty_ret)) => {
-            // TODO: 优化此处
-            match (arg, pi_arg) {
-                (Argument::Dummy, Argument::Dummy) => {
-                    let r_o = synthesize_with_type(r, ty_ret, env)?;
-                    LambdaExpr(Argument::Dummy, Ref::new(r_o))
-                }
-                (Argument::Dummy, Argument::Symbol(sym)) => {
-                    let r_o = synthesize_with_type(
-                        r,
-                        ty_ret,
-                        &env.insert(sym.clone(), Clone::clone(&ty_arg)),
-                    )?;
-                    LambdaExpr(Argument::Dummy, Ref::new(r_o))
-                }
-                (Argument::Symbol(sym), Argument::Dummy) => {
-                    let r_o = synthesize_with_type(
-                        r,
-                        ty_ret,
-                        &env.insert(sym.clone(), Clone::clone(&ty_arg)),
-                    )?;
-                    LambdaExpr(Argument::Symbol(sym.clone()), Ref::new(r_o))
-                }
-                (Argument::Symbol(sym), Argument::Symbol(pi_sym)) if **sym == **pi_sym => {
-                    let r_o = synthesize_with_type(
-                        r,
-                        ty_ret,
-                        &env.insert(sym.clone(), Clone::clone(&ty_arg)),
-                    )?;
-                    LambdaExpr(Argument::Symbol(sym.clone()), Ref::new(r_o))
-                }
-                (Argument::Symbol(sym), Argument::Symbol(pi_sym)) => {
-                    let new_sym = gensym();
-                    let r_new = substitute(r, sym, &Identifier(new_sym.clone()), env);
-                    let ty_ret_new = substitute(ty_ret, pi_sym, &Identifier(new_sym.clone()), env);
-                    let r_o = synthesize_with_type(
-                        &r_new,
-                        &ty_ret_new,
-                        &env.insert(new_sym.clone(), Clone::clone(&ty_arg)),
-                    )?;
-                    LambdaExpr(Argument::Symbol(new_sym), Ref::new(r_o))
-                }
-            }
+            let r_o = synthesize_with_type(r, ty_ret, &env_ext(env, &ty_arg))?;
+            let new_arg = match (arg, pi_arg) {
+                (Argument::Symbol(sym), _) => Argument::Symbol(sym.clone()),
+                (Argument::Dummy, Argument::Symbol(sym)) => Argument::Symbol(sym.clone()),
+                _ => Argument::Dummy,
+            };
+            LambdaExpr(new_arg, Ref::new(r_o))
         }
         (BuiltinApply(bf, args), SigmaExpr(arg, ty_a, ty_d)) if &**bf == "cons" => {
             match_builtin_args!(let [a, d] = &**args);
@@ -189,15 +126,10 @@ pub fn synthesize_with_type<M: fmt::Display>(e: &Expr<M>, ty: &Type<!>, env: &En
             let d_o = synthesize_with_type(d, &substitute_arg(ty_d, arg, &a_o, env), env)?;
             BuiltinApply(bf.clone(), vec![a_o, d_o])
         }
-        (Identifier(ident), BuiltinApply(ty_bf, ty_args)) => {
-            match (&**ident, &**ty_bf, &**ty_args) {
-                // ListI-1
-                ("nil", "List", [_ty]) => Identifier(ident.clone()),
-                _ => switch_rule(e, ty, env)?,
-            }
-        }
         (BuiltinApply(bf, args), BuiltinApply(ty_bf, ty_args)) => {
             match (&**bf, &**args, &**ty_bf, &**ty_args) {
+                // ListI-1
+                ("nil", [], "List", [_ty]) => BuiltinApply(bf.clone(), vec![]),
                 // ListI-3，TLY 中不存在，我自己加的，使 (the (List (-> Nat Nat)) (:: (lambda (x) x) nil)) 这样的
                 // 表达式能推导出类型。
                 ("::", [e, es], "List", [ty_1]) => {
@@ -223,12 +155,10 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
         Info(_, e) => synthesize(e, env)?,
         Literal(lit) => synthesize_literal(lit),
         // Hypothesis
-        Identifier(ident) => match env.get(ident) {
-            Some(ty) => (ty.clone(), Identifier(ident.clone())),
-            None => throw!(ErrorKind::UndefinedIdentifier {
-                ident: ident.to_string()
-            }),
-        },
+        Identifier(ident) => {
+            let ty = env_get_nth_type(env, *ident).clone();
+            (ty, Identifier(ident.clone()))
+        }
         PiExpr(arg, ty, body) => {
             todo!()
         }
@@ -247,6 +177,16 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
         U(n) => (U(n + 1), U(*n)),
         BuiltinApply(bf, args) => {
             match (&**bf, &**args) {
+                // 内建单例对象
+                (s, []) => {
+                    let ty_s_o = match s {
+                        "Atom" | "Nat" | "Trivial" | "Absurd" => U(0),
+                        "zero" => BuiltinApply("Nat".into(), vec![]),
+                        "sole" => BuiltinApply("Trivial".into(), vec![]),
+                        _ => throw!(ErrorKind::CannotInferType { expr: s.to_owned() }),
+                    };
+                    (ty_s_o, BuiltinApply(bf.clone(), vec![]))
+                }
                 // "The" 规则
                 ("the", [ty, expr]) => {
                     let ty_o = resolve_type(ty, env)?;
@@ -280,17 +220,25 @@ fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> Type<!> {
         // FunF-1
         PiExpr(arg, ty, ty_ret) => {
             let ty_o = resolve_type(ty, env)?;
-            let ty_ret_o = resolve_type(ty_ret, &env_ext_arg(&env, &arg, &ty_o))?;
+            let ty_ret_o = resolve_type(ty_ret, &env_ext(&env, &ty_o))?;
             PiExpr(arg.clone(), Ref::new(ty_o), Ref::new(ty_ret_o))
         }
         // SigmaF-1
         SigmaExpr(arg, ty, ty_d) => {
             let ty_o = resolve_type(ty, env)?;
-            let ty_d_o = resolve_type(ty_d, &env_ext_arg(&env, &arg, &ty_o))?;
+            let ty_d_o = resolve_type(ty_d, &env_ext(&env, &ty_o))?;
             SigmaExpr(arg.clone(), Ref::new(ty_o), Ref::new(ty_d_o))
         }
         BuiltinApply(bf, args) => {
             match (&**bf, &**args) {
+                // 内建单例对象
+                (s, []) => match s {
+                    "Atom" | "Nat" | "Trivial" | "Absurd" => BuiltinApply(bf.clone(), vec![]),
+                    _ => throw!(ErrorKind::TypeNotMatch {
+                        expected: "type".to_owned(),
+                        given: bf.to_string()
+                    }),
+                },
                 // ListF
                 ("List", [ty_e]) => {
                     let ty_e_o = resolve_type(ty_e, env)?;
@@ -326,6 +274,11 @@ fn is_type_check_same(ty1: &Type<!>, ty2: &Type<!>, env: &Env) -> bool {
     match (ty1, ty2) {
         (Identifier(id1), Identifier(id2)) => id1 == id2,
         (U(m), U(n)) => m == n,
+        (BuiltinApply(f1, args1), BuiltinApply(f2, args2))
+            if args1.len() == 0 && args2.len() == 0 =>
+        {
+            f1 == f2
+        }
         _ => {
             todo!()
         }
@@ -343,17 +296,12 @@ fn expr_check_same(c1: &Expr<!>, c2: &Expr<!>, ct: &Type<!>, env: &Env) {
 /// 直接从字面量推导类型
 fn synthesize_literal(lit: &Literal) -> (Type<!>, Expr<!>) {
     let ty = match lit {
-        Literal::Nat(_) => Type::Identifier("Nat".into()),
-        Literal::Atom(_) => Type::Identifier("Atom".into()),
+        Literal::Nat(_) => Type::BuiltinApply("Nat".into(), vec![]),
+        Literal::Atom(_) => Type::BuiltinApply("Atom".into(), vec![]),
     };
     (ty, Expr::Literal(lit.clone()))
 }
 
 pub fn default_environment() -> Env {
-    let ty_triv: Ref<str> = "Trivial".into();
     Env::new()
-        .insert("Nat".into(), Expr::U(0))
-        .insert("Atom".into(), Expr::U(0))
-        .insert("sole".into(), Expr::Identifier(ty_triv.clone()))
-        .insert(ty_triv, Expr::U(0))
 }

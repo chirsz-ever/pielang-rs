@@ -1,9 +1,13 @@
 use std::borrow::Borrow;
 use std::cmp::Eq;
 use std::fmt;
+use thiserror::Error;
 
 /// 引用类型，当前仅为 `std::rc::Rc`，未来或可使用 GC。
 pub type Ref<T> = std::rc::Rc<T>;
+
+/// 存储 De Bruijn index 的类型
+pub type DBI = usize;
 
 /// 在源代码中起始和结束位置，前闭后开
 #[derive(Debug, Clone, Copy)]
@@ -111,4 +115,38 @@ pub fn map_result<T, U, E>(
         v.push(f(x)?);
     }
     Ok(v)
+}
+
+/// 带有位置信息的错误类型
+#[derive(Debug, Clone, Error)]
+pub struct LocatedError<ErrorKind>
+where
+    ErrorKind: fmt::Debug + fmt::Display,
+{
+    pub loc: Option<Span>,
+    pub erk: ErrorKind,
+}
+
+impl<ErrorKind> fmt::Display for LocatedError<ErrorKind>
+where
+    ErrorKind: fmt::Debug + fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self { loc: None, erk } => write!(f, "{}", erk),
+            Self {
+                loc: Some(span),
+                erk,
+            } => write!(f, "{}: {}", span, erk),
+        }
+    }
+}
+
+impl<ErrorKind> From<ErrorKind> for LocatedError<ErrorKind>
+where
+    ErrorKind: fmt::Debug + fmt::Display,
+{
+    fn from(erk: ErrorKind) -> Self {
+        Self { loc: None, erk }
+    }
 }

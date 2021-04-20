@@ -12,6 +12,7 @@ lalrpop_mod!(#[allow(clippy::all)] pub syntax);
 
 pub mod ast;
 pub mod core_ast;
+pub mod scope_check;
 #[cfg(test)]
 mod test;
 pub mod type_check;

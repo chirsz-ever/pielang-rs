@@ -56,8 +56,9 @@ fn main() -> io::Result<()> {
 }
 
 #[throws]
-fn analyze_expression(expr: &ast::Expr) -> core_ast::Expr<!> {
-    core_ast::unfold(expr)?
+fn transform_expression(expr: &ast::Expr) -> core_ast::Expr<!> {
+    let unfold_expr = core_ast::unfold(expr)?;
+    scope_check::to_dbi(&unfold_expr, &scope_check::default_environment())?
 }
 
 #[throws]
@@ -74,17 +75,17 @@ fn interpret(input: &mut dyn Read) {
     for stmt in stats {
         match stmt {
             Claim(_, Symbol(_, sym), ty) => {
-                let e = analyze_expression(&ty)?;
+                let e = transform_expression(&ty)?;
                 println!("Claim {}:", sym);
                 println!("{:?}", e);
             }
             Define(_, Symbol(_, sym), expr) => {
-                let e = analyze_expression(&expr)?;
+                let e = transform_expression(&expr)?;
                 println!("Define {} =", sym);
                 println!("{:?}", e);
             }
             Expression(expr) => {
-                let e = analyze_expression(&expr)?;
+                let e = transform_expression(&expr)?;
                 println!("{:?}", e);
             }
         }
@@ -115,7 +116,7 @@ fn repl() {
                 match parser
                     .parse(&line)
                     .map_err(|e| anyhow::anyhow!("{}", e))
-                    .and_then(|expr| analyze_expression(&expr))
+                    .and_then(|expr| transform_expression(&expr))
                 {
                     Ok(e) => {
                         let ty = match tc::synthesize(&e, &env) {
