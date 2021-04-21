@@ -1,5 +1,6 @@
 #![feature(never_type)]
 
+use core_ast::DBIPPrint as dpp;
 use fehler::{throw, throws};
 use pielang::*;
 use rustyline::KeyEvent;
@@ -126,7 +127,7 @@ fn repl() {
                                 continue;
                             }
                         };
-                        println!("{}: {}", e, ty);
+                        println!("{}: {}", dpp(&e, &env), dpp(&ty, &env));
                     }
                     Err(e) => {
                         println!("Error: {}", e);

@@ -58,7 +58,8 @@ pub type Type<M, V = DBI> = Expr<M, V>;
 impl<M, V> fmt::Display for Expr<M, V>
 where
     M: fmt::Display,
-    V: fmt::Display,
+    //V: fmt::Display,
+    V: AsRef<str>,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Expr::*;
@@ -73,7 +74,7 @@ where
                 write!(f, "{}", n)
             }
             Identifier(id) => {
-                write!(f, "{}", id)
+                write!(f, "{}", id.as_ref())
             }
             LambdaExpr(arg, body) => {
                 write!(f, "(λ ({}) {})", arg, body)
@@ -94,6 +95,109 @@ where
                 write!(f, "({}", bf)?;
                 for arg in args {
                     write!(f, " {}", arg)?;
+                }
+                write!(f, ")")
+            }
+            U(0) => {
+                write!(f, "U")
+            }
+            U(n) => {
+                write!(f, "(U {})", n)
+            }
+        }
+    }
+}
+
+type Env<V> = StackMap<Option<Ref<str>>, Option<V>>;
+
+/// 包装器，为 De Bruijn 索引表示实现 pretty print
+pub struct DBIPPrint<'a, M, V>(pub &'a Expr<M>, pub &'a Env<V>);
+
+impl<'a, M, V> fmt::Display for DBIPPrint<'a, M, V>
+where
+    M: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
+    where
+        M: fmt::Display,
+    {
+        use Expr::*;
+        let DBIPPrint(expr, env) = self;
+
+        fn fetch_fresh_name<'a, V>(arg: Option<Ref<str>>, env: &'a Env<V>) -> Ref<str> {
+            if let Some(sym) = arg {
+                sym
+            } else {
+                let mut x = "x".to_owned();
+                let mut n = 0;
+                while env
+                    .iter()
+                    .any(|(y, _)| y.as_ref().map_or(false, |y| **y == *x))
+                {
+                    x = format!("x{}", n);
+                    n += 1;
+                }
+                x.into()
+            }
+        }
+
+        fn ext_env<V>(env: &Env<V>, name: &str) -> Env<V> {
+            env.insert(Some(name.into()), None)
+        }
+
+        match expr {
+            Info(info, inner) => {
+                write!(f, "[{}: {}]", info, DBIPPrint(&**inner, *env))
+            }
+            Literal(ast::Literal::Atom(atom)) => {
+                write!(f, "'{}", atom)
+            }
+            Literal(ast::Literal::Nat(n)) => {
+                write!(f, "{}", n)
+            }
+            Identifier(n) => write!(
+                f,
+                "{}",
+                fetch_fresh_name(
+                    env.iter().nth(*n).and_then(|(k, _)| k.as_ref()).cloned(),
+                    env
+                )
+            ),
+            LambdaExpr(arg, body) => {
+                let arg_name = fetch_fresh_name(arg.into(), env);
+                write!(
+                    f,
+                    "(λ ({}) {})",
+                    arg_name,
+                    DBIPPrint(&**body, &ext_env(env, &arg_name))
+                )
+            }
+            PiExpr(arg, ty, body) => {
+                let arg_name = fetch_fresh_name(arg.into(), env);
+                let new_env = ext_env(env, &arg_name);
+                let ty = DBIPPrint(&**ty, &new_env);
+                let body = DBIPPrint(&**body, &new_env);
+                write!(f, "(Π (({} {})) {})", arg_name, ty, body)
+            }
+            SigmaExpr(arg, ty, body) => {
+                let arg_name = fetch_fresh_name(arg.into(), env);
+                let new_env = ext_env(env, &arg_name);
+                let ty = DBIPPrint(&**ty, &new_env);
+                let body = DBIPPrint(&**body, &new_env);
+                write!(f, "(Σ (({} {})) {})", arg_name, ty, body)
+            }
+            Apply(fun, arg) => {
+                let fun = DBIPPrint(&**fun, &env);
+                let arg = DBIPPrint(&**arg, &env);
+                write!(f, "({} {})", fun, arg)
+            }
+            BuiltinApply(bf, args) => {
+                if args.len() == 0 {
+                    return write!(f, "{}", bf);
+                }
+                write!(f, "({}", bf)?;
+                for arg in args {
+                    write!(f, " {}", DBIPPrint(&arg, &env))?;
                 }
                 write!(f, ")")
             }
@@ -141,6 +245,24 @@ pub type Error = LocatedError<ErrorKind>;
 pub enum Argument {
     Dummy,
     Symbol(Ref<str>),
+}
+
+impl From<Argument> for Option<Ref<str>> {
+    fn from(arg: Argument) -> Self {
+        match arg {
+            Argument::Dummy => None,
+            Argument::Symbol(sym) => Some(sym),
+        }
+    }
+}
+
+impl From<&Argument> for Option<Ref<str>> {
+    fn from(arg: &Argument) -> Self {
+        match arg {
+            Argument::Dummy => None,
+            Argument::Symbol(sym) => Some(sym.clone()),
+        }
+    }
 }
 
 impl fmt::Display for Argument {

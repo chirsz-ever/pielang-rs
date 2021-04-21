@@ -1,12 +1,13 @@
 use crate::{ast, core_ast, utils};
 use ast::Literal;
-use core_ast::{Argument, Expr, Type};
+use core_ast::{Argument, DBIPPrint as dpp, Expr, Type};
 use fehler::{throw, throws};
 use std::fmt;
 use thiserror::Error;
 use utils::{LocatedError, Ref, Span, DBI};
 
-pub type Env = crate::utils::StackMap<Type<!>, ()>;
+// TODO: 改进打印方式，将这里改成 StackMap<Option<Ref<str>>, Type<!>>
+pub type Env = crate::utils::StackMap<Option<Ref<str>>, Option<Type<!>>>;
 
 type Error = LocatedError<ErrorKind>;
 
@@ -35,13 +36,13 @@ impl fmt::Display for ErrorKind {
 }
 
 macro_rules! try_match {
-    (let $p:tt($($i:ident),+) = $e:expr) => {
+    (let $p:tt($($i:ident),+) = $e:expr; $env:expr) => {
         let ($($i),+) = if let $p($($i),+) = $e {
             ($($i),+)
         } else {
             throw!(ErrorKind::TypeNotMatch {
                 expected: format!(stringify!($p)),
-                given: format!("{}", $e),
+                given: format!("{}", dpp($e, $env)),
             })
         };
     };
@@ -67,7 +68,12 @@ macro_rules! match_builtin_args {
 
 /// 执行 expr[var/e]，将 expr 中自由出现的 var 替换为 e，e 应当是没有自由变量的。
 fn substitute(expr: &Expr<!>, var: &str, e: &Expr<!>, env: &Env) -> Expr<!> {
-    log::trace!("substitute {:?} to {} in {}", var, e, expr);
+    log::trace!(
+        "substitute {:?} to {} in {}",
+        var,
+        dpp(e, env),
+        dpp(expr, env)
+    );
     todo!()
 }
 
@@ -81,13 +87,13 @@ fn substitute_arg(expr: &Expr<!>, arg: &Argument, e: &Expr<!>, env: &Env) -> Exp
 }
 
 #[inline]
-fn env_ext(env: &Env, ty: &Type<!>) -> Env {
-    env.insert(ty.clone(), ())
+fn env_ext(env: &Env, name: Option<Ref<str>>, ty: &Type<!>) -> Env {
+    env.insert(name, Some(ty.clone()))
 }
 
 fn env_get_nth_type(env: &Env, n: usize) -> &Type<!> {
     // 经过作用域检查，保证不会 panic
-    env.iter().nth(n).map(|(k, _)| k).unwrap()
+    env.iter().nth(n).and_then(|(_, ty)| ty.as_ref()).unwrap()
 }
 
 #[inline]
@@ -105,14 +111,14 @@ fn switch_rule<M: fmt::Display>(e: &Expr<M>, ty: &Type<!>, env: &Env) -> Expr<!>
 #[throws]
 pub fn synthesize_with_type<M: fmt::Display>(e: &Expr<M>, ty: &Type<!>, env: &Env) -> Expr<!> {
     use Expr::*;
-    log::trace!("check {} is a {}", e, ty);
+    log::trace!("check {} is a {}", dpp(e, env), dpp(ty, env));
     if let Info(_, e) = e {
         return synthesize_with_type(e, ty, env)?;
     }
     match (e, ty) {
         // FunI-1
         (LambdaExpr(arg, r), PiExpr(pi_arg, ty_arg, ty_ret)) => {
-            let r_o = synthesize_with_type(r, ty_ret, &env_ext(env, &ty_arg))?;
+            let r_o = synthesize_with_type(r, ty_ret, &env_ext(env, arg.into(), &ty_arg))?;
             let new_arg = match (arg, pi_arg) {
                 (Argument::Symbol(sym), _) => Argument::Symbol(sym.clone()),
                 (Argument::Dummy, Argument::Symbol(sym)) => Argument::Symbol(sym.clone()),
@@ -150,7 +156,7 @@ pub fn synthesize_with_type<M: fmt::Display>(e: &Expr<M>, ty: &Type<!>, env: &En
 #[throws]
 pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>) {
     use Expr::*;
-    log::trace!("synthesize {}", e);
+    log::trace!("synthesize {}", dpp(e, env));
     match e {
         Info(_, e) => synthesize(e, env)?,
         Literal(lit) => synthesize_literal(lit),
@@ -168,7 +174,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
         // FunE-1
         Apply(f, arg) => {
             let (ty_f, f_o) = synthesize(f, env)?;
-            try_match!(let PiExpr(var, ty_arg, ty_ret) = ty_f);
+            try_match!(let PiExpr(var, ty_arg, ty_ret) = &ty_f; &env);
             let arg_o = synthesize_with_type(arg, &ty_arg, env)?;
             let ty = substitute_arg(&ty_ret, &var, &arg_o, env);
             (ty, Apply(Ref::new(f_o), Ref::new(arg_o)))
@@ -204,7 +210,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
             }
         }
         _ => throw!(ErrorKind::CannotInferType {
-            expr: format!("{}", e)
+            expr: format!("{}", dpp(e, env))
         }),
     }
 }
@@ -214,19 +220,19 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
 #[throws]
 fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> Type<!> {
     use Expr::*;
-    log::trace!("resolve {0} is a type", e);
+    log::trace!("resolve {0} is a type", dpp(e, env));
     match e {
         Info(_, e) => resolve_type(e, env)?,
         // FunF-1
         PiExpr(arg, ty, ty_ret) => {
             let ty_o = resolve_type(ty, env)?;
-            let ty_ret_o = resolve_type(ty_ret, &env_ext(&env, &ty_o))?;
+            let ty_ret_o = resolve_type(ty_ret, &env_ext(&env, arg.into(), &ty_o))?;
             PiExpr(arg.clone(), Ref::new(ty_o), Ref::new(ty_ret_o))
         }
         // SigmaF-1
         SigmaExpr(arg, ty, ty_d) => {
             let ty_o = resolve_type(ty, env)?;
-            let ty_d_o = resolve_type(ty_d, &env_ext(&env, &ty_o))?;
+            let ty_d_o = resolve_type(ty_d, &env_ext(&env, arg.into(), &ty_o))?;
             SigmaExpr(arg.clone(), Ref::new(ty_o), Ref::new(ty_d_o))
         }
         BuiltinApply(bf, args) => {
@@ -261,15 +267,26 @@ fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> Type<!> {
 #[throws]
 fn type_check_same(ty1: &Type<!>, ty2: &Type<!>, env: &Env) {
     use Expr::*;
-    log::trace!("check if {} and {} are the same type", ty1, ty2);
+    log::trace!(
+        "check if {} and {} are the same type",
+        dpp(ty1, env),
+        dpp(ty2, env)
+    );
     if !is_type_check_same(ty1, ty2, env) {
-        throw!(ErrorKind::NotSame(ty1.to_string(), ty2.to_string()));
+        throw!(ErrorKind::NotSame(
+            dpp(ty1, env).to_string(),
+            dpp(ty2, env).to_string()
+        ));
     }
 }
 
 fn is_type_check_same(ty1: &Type<!>, ty2: &Type<!>, env: &Env) -> bool {
     use Expr::*;
-    log::trace!("check {} and {} are the same type", ty1, ty2);
+    log::trace!(
+        "check {} and {} are the same type",
+        dpp(ty1, env),
+        dpp(ty2, env)
+    );
     // TODO: 比较前充分计算 ty1 和 ty2
     match (ty1, ty2) {
         (Identifier(id1), Identifier(id2)) => id1 == id2,
@@ -289,7 +306,11 @@ fn is_type_check_same(ty1: &Type<!>, ty2: &Type<!>, env: &Env) -> bool {
 /// 第八种 Judgement，见 Figure B.1。
 #[throws]
 fn expr_check_same(c1: &Expr<!>, c2: &Expr<!>, ct: &Type<!>, env: &Env) {
-    log::trace!("check {} and {} are the same expression", c1, c2);
+    log::trace!(
+        "check {} and {} are the same expression",
+        dpp(c1, env),
+        dpp(c2, env)
+    );
     todo!()
 }
 
