@@ -206,6 +206,11 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                     let es_o = synthesize_with_type(es, &ty_list, env)?;
                     (ty_list, BuiltinApply(bf.clone(), vec![e_o, es_o]))
                 }
+                // NatI-2
+                ("add1", [n]) => {
+                    let n_o = synthesize_with_type(n, &bty::nat(), env)?;
+                    (bty::nat(), n_o)
+                }
                 _ => unreachable!(),
             }
         }
