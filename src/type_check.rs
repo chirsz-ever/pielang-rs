@@ -1,6 +1,6 @@
 use crate::{ast, core_ast, utils};
 use ast::Literal;
-use core_ast::{Argument, DBIPPrint as dpp, Expr, Type};
+use core_ast::{builtin_type as bty, Argument, DBIPPrint as dpp, Expr, Type};
 use fehler::{throw, throws};
 use std::fmt;
 use thiserror::Error;
@@ -187,8 +187,8 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                 (s, []) => {
                     let ty_s_o = match s {
                         "Atom" | "Nat" | "Trivial" | "Absurd" => U(0),
-                        "zero" => BuiltinApply("Nat".into(), vec![]),
-                        "sole" => BuiltinApply("Trivial".into(), vec![]),
+                        "zero" => bty::nat(),
+                        "sole" => bty::trivial(),
                         _ => throw!(ErrorKind::CannotInferType { expr: s.to_owned() }),
                     };
                     (ty_s_o, BuiltinApply(bf.clone(), vec![]))
@@ -317,8 +317,8 @@ fn expr_check_same(c1: &Expr<!>, c2: &Expr<!>, ct: &Type<!>, env: &Env) {
 /// 直接从字面量推导类型
 fn synthesize_literal(lit: &Literal) -> (Type<!>, Expr<!>) {
     let ty = match lit {
-        Literal::Nat(_) => Type::BuiltinApply("Nat".into(), vec![]),
-        Literal::Atom(_) => Type::BuiltinApply("Atom".into(), vec![]),
+        Literal::Nat(_) => bty::nat(),
+        Literal::Atom(_) => bty::atom(),
     };
     (ty, Expr::Literal(lit.clone()))
 }

@@ -444,3 +444,31 @@ const PIE_BUILTIN_FUNCTIONS: [(&str, usize); _] = [
     ("ind-Absurd", 2),
 ];
 }
+
+// 内建无参数类型
+#[allow(non_upper_case_globals)]
+pub mod builtin_type {
+    use super::Expr;
+
+    macro_rules! claim_builtin_types {
+        ($(($tynm:ident, $tyf:ident)),+ $(,)?) => {
+            thread_local! {
+                $(
+                pub static $tynm: Expr<!> = Expr::BuiltinApply(stringify!($tynm).into(), vec![]);
+                )+
+            }
+            $(
+                pub fn $tyf() -> Expr<!> {
+                    $tynm.with(Clone::clone)
+                }
+            )+
+        };
+    }
+
+    claim_builtin_types! {
+        (Absurd, absurd),
+        (Trivial, trivial),
+        (Atom, atom),
+        (Nat, nat),
+    }
+}
