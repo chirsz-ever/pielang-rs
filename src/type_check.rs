@@ -143,11 +143,60 @@ pub fn synthesize_with_type<M: fmt::Display>(e: &Expr<M>, ty: &Type<!>, env: &En
                     let es_o = synthesize_with_type(es, ty, env)?;
                     BuiltinApply(bf.clone(), vec![e_o, es_o])
                 }
+                // VecI-1
+                ("vecnil", [], "Vec", [_ty, len]) => {
+                    if is_literal_zero(len) {
+                        BuiltinApply(bf.clone(), vec![])
+                    } else {
+                        throw!(ErrorKind::TypeNotMatch {
+                            expected: format!("{}", dpp(ty, env)),
+                            given: bf.to_string(),
+                        })
+                    }
+                }
+                // VecI-2
+                ("vec::", [e, es], "Vec", [ty_e, len]) if is_literal_add1(len) => {
+                    let e_o = synthesize_with_type(e, ty_e, env)?;
+                    let sublen = literal_sub1(len);
+                    let ty_subvec = BuiltinApply(ty_bf.clone(), vec![ty_e.clone(), sublen]);
+                    let es_o = synthesize_with_type(es, &ty_subvec, env)?;
+                    BuiltinApply(bf.clone(), vec![e_o, es_o])
+                }
                 _ => switch_rule(e, ty, env)?,
             }
         }
         // Switch
         _ => switch_rule(e, ty, env)?,
+    }
+}
+
+fn is_literal_zero<M>(e: &Expr<M>) -> bool {
+    use Expr::*;
+    match e {
+        Literal(ast::Literal::Nat(0)) => true,
+        BuiltinApply(bf, _) if &**bf == "zero" => true,
+        _ => false,
+    }
+}
+
+fn is_literal_add1<M>(e: &Expr<M>) -> bool {
+    use Expr::*;
+    match e {
+        Literal(ast::Literal::Nat(n)) if *n > 0 => true,
+        BuiltinApply(bf, _) if &**bf == "add1" => true,
+        _ => false,
+    }
+}
+
+fn literal_sub1(e: &Expr<!>) -> Expr<!> {
+    use Expr::*;
+    match e {
+        Literal(ast::Literal::Nat(n)) => Literal(ast::Literal::Nat(n - 1)),
+        BuiltinApply(bf, args) => match (&**bf, &**args) {
+            ("add1", [n]) => n.clone(),
+            _ => unreachable!(),
+        },
+        _ => unreachable!(),
     }
 }
 
@@ -256,6 +305,12 @@ fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (ULevel, Type<!>) {
                 ("List", [ty_e]) => {
                     let (l, ty_e_o) = resolve_type(ty_e, env)?;
                     (l, BuiltinApply(bf.clone(), vec![ty_e_o]))
+                }
+                // VecF
+                ("Vec", [ty, len]) => {
+                    let (l, ty_o) = resolve_type(ty, env)?;
+                    let len_o = synthesize_with_type(len, &bty::nat(), env)?;
+                    (l, BuiltinApply(bf.clone(), vec![ty_o, len_o]))
                 }
                 _ => unreachable!(),
             }
