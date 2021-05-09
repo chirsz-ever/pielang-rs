@@ -36,6 +36,23 @@ impl fmt::Display for ErrorKind {
 }
 
 macro_rules! try_match {
+    (let BuiltinApply($bf:literal , [$($i:ident),+ $(,)?]) = $e:expr; $env:expr) => {
+        let ($($i),+) = if let BuiltinApply(ref bf, ref args) = $e {
+            if let ($bf, [$($i),+]) = (&**bf, &**args) {
+                ($($i),+)
+            } else {
+                throw!(ErrorKind::TypeNotMatch {
+                    expected: format!($bf),
+                    given: format!("{}", dpp($e, $env)),
+                })
+            }
+        } else {
+            throw!(ErrorKind::TypeNotMatch {
+                expected: format!($bf),
+                given: format!("{}", dpp($e, $env)),
+            })
+        };
+    };
     (let $p:tt($($i:ident),+) = $e:expr; $env:expr) => {
         let ($($i),+) = if let $p($($i),+) = $e {
             ($($i),+)
@@ -254,6 +271,34 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                 ("add1", [n]) => {
                     let n_o = synthesize_with_type(n, &bty::nat(), env)?;
                     (bty::nat(), BuiltinApply(bf.clone(), vec![n_o]))
+                }
+                // VecE-1
+                ("head", [v]) => {
+                    let (ty_v, v_o) = synthesize(v, env)?;
+                    try_match! { let BuiltinApply("Vec", [ty_e, len]) = &ty_v; env };
+                    if is_literal_add1(&len) {
+                        (ty_e.clone(), BuiltinApply(bf.clone(), vec![v_o]))
+                    } else {
+                        throw!(ErrorKind::TypeNotMatch {
+                            expected: "Vec longer than 1".to_owned(),
+                            given: format!("{}", dpp(v, env)),
+                        })
+                    }
+                }
+                // VecE-2
+                ("tail", [v]) => {
+                    let (ty_v, v_o) = synthesize(v, env)?;
+                    try_match! { let BuiltinApply("Vec", [ty_e, len]) = &ty_v; env };
+                    if is_literal_add1(&len) {
+                        let ty_subv =
+                            BuiltinApply("Vec".into(), vec![ty_e.clone(), literal_sub1(len)]);
+                        (ty_subv, BuiltinApply(bf.clone(), vec![v_o]))
+                    } else {
+                        throw!(ErrorKind::TypeNotMatch {
+                            expected: "Vec longer than 1".to_owned(),
+                            given: format!("{}", dpp(v, env)),
+                        })
+                    }
                 }
                 _ => unreachable!(),
             }
