@@ -179,6 +179,16 @@ pub fn synthesize_with_type<M: fmt::Display>(e: &Expr<M>, ty: &Type<!>, env: &En
                     let es_o = synthesize_with_type(es, &ty_subvec, env)?;
                     BuiltinApply(bf.clone(), vec![e_o, es_o])
                 }
+                // EitehrI-1
+                ("left", [lt], "Either", [ty_l, _ty_r]) => {
+                    let lt_o = synthesize_with_type(lt, ty_l, env)?;
+                    BuiltinApply(bf.clone(), vec![lt_o])
+                }
+                // EitehrI-2
+                ("right", [rt], "Either", [_ty_l, ty_r]) => {
+                    let rt_o = synthesize_with_type(rt, ty_r, env)?;
+                    BuiltinApply(bf.clone(), vec![rt_o])
+                }
                 _ => switch_rule(e, ty, env)?,
             }
         }
@@ -355,6 +365,12 @@ fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (ULevel, Type<!>) {
                     let (l, ty_o) = resolve_type(ty, env)?;
                     let len_o = synthesize_with_type(len, &bty::nat(), env)?;
                     (l, bty::vec(ty_o, len_o))
+                }
+                // EitherF
+                ("Either", [ty_l, ty_r]) => {
+                    let (l_l, ty_l_o) = resolve_type(ty_l, env)?;
+                    let (l_r, ty_r_o) = resolve_type(ty_r, env)?;
+                    (std::cmp::max(l_l, l_r), bty::either(ty_l_o, ty_r_o))
                 }
                 _ => unreachable!(),
             }
