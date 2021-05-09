@@ -422,7 +422,7 @@ fn is_type_check_same(ty1: &Type<!>, ty2: &Type<!>, env: &Env) -> bool {
         (Identifier(id1), Identifier(id2)) => id1 == id2,
         (U(m), U(n)) => m == n,
         (BuiltinApply(f1, args1), BuiltinApply(f2, args2))
-            if args1.len() == 0 && args2.len() == 0 =>
+            if args1.is_empty() && args2.is_empty() =>
         {
             f1 == f2
         }

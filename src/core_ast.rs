@@ -91,7 +91,7 @@ where
                 write!(f, "({} {})", fun, arg)
             }
             BuiltinApply(bf, args) => {
-                if args.len() == 0 {
+                if args.is_empty() {
                     return write!(f, "{}", bf);
                 }
                 write!(f, "({}", bf)?;
@@ -126,7 +126,7 @@ where
         use Expr::*;
         let DBIPPrint(expr, env) = self;
 
-        fn fetch_fresh_name<'a, V>(arg: Option<Ref<str>>, env: &'a Env<V>) -> Ref<str> {
+        fn fetch_fresh_name<V>(arg: Option<Ref<str>>, env: &Env<V>) -> Ref<str> {
             if let Some(sym) = arg {
                 sym
             } else {
@@ -194,7 +194,7 @@ where
                 write!(f, "({} {})", fun, arg)
             }
             BuiltinApply(bf, args) => {
-                if args.len() == 0 {
+                if args.is_empty() {
                     return write!(f, "{}", bf);
                 }
                 write!(f, "({}", bf)?;

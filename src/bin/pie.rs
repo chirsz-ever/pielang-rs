@@ -1,7 +1,7 @@
 #![feature(never_type)]
 
 use core_ast::DBIPPrint as dpp;
-use fehler::{throw, throws};
+use fehler::{throws};
 use pielang::*;
 use rustyline::KeyEvent;
 use std::fs::File;

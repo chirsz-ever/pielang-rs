@@ -59,7 +59,7 @@ impl<K, V> StackMap<K, V> {
 
     pub fn iter(&self) -> StakMapIter<'_, K, V> {
         StakMapIter {
-            curr: self.0.as_ref().map(|n| &**n),
+            curr: self.0.as_deref(),
         }
     }
 }
