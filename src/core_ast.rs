@@ -12,6 +12,8 @@ macro_rules! claim_array {
 
 // TODO: 嵌入源代码位置信息，定义合适的错误类型
 
+pub type ULevel = u32;
+
 /// 表达式包含位置信息和元信息（类型等）
 #[derive(Debug, Clone)]
 pub enum Expr<MetaInfo, Variable = DBI> {
@@ -50,7 +52,7 @@ pub enum Expr<MetaInfo, Variable = DBI> {
     BuiltinApply(Ref<str>, Vec<Expr<MetaInfo, Variable>>),
 
     /// 类型的类型，后面的数字为 Universe Hierarchy 准备，目前统一是 0
-    U(u64),
+    U(ULevel),
 }
 
 pub type Type<M, V = DBI> = Expr<M, V>;

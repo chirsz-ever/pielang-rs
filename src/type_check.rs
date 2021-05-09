@@ -1,6 +1,6 @@
 use crate::{ast, core_ast, utils};
 use ast::Literal;
-use core_ast::{builtin_type as bty, Argument, DBIPPrint as dpp, Expr, Type};
+use core_ast::{builtin_type as bty, Argument, DBIPPrint as dpp, Expr, Type, ULevel};
 use fehler::{throw, throws};
 use std::fmt;
 use thiserror::Error;
@@ -165,12 +165,8 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
             let ty = env_get_nth_type(env, *ident).clone();
             (ty, Identifier(ident.clone()))
         }
-        PiExpr(arg, ty, body) => {
-            todo!()
-        }
-        SigmaExpr(arg, ty, body) => {
-            todo!()
-        }
+        PiExpr(arg, ty_a, ty_r) => resolve_type_rule(ty_a, env)?,
+        SigmaExpr(arg, ty_a, ty_d) => resolve_type_rule(ty_a, env)?,
         // FunE-1
         Apply(f, arg) => {
             let (ty_f, f_o) = synthesize(f, env)?;
@@ -184,18 +180,17 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
         BuiltinApply(bf, args) => {
             match (&**bf, &**args) {
                 // 内建单例对象
-                (s, []) => {
-                    let ty_s_o = match s {
-                        "Atom" | "Nat" | "Trivial" | "Absurd" => U(0),
-                        "zero" => bty::nat(),
-                        "sole" => bty::trivial(),
-                        _ => throw!(ErrorKind::CannotInferType { expr: s.to_owned() }),
-                    };
-                    (ty_s_o, BuiltinApply(bf.clone(), vec![]))
+                ("zero", []) => (bty::nat(), BuiltinApply(bf.clone(), vec![])),
+                ("sole", []) => (bty::trivial(), BuiltinApply(bf.clone(), vec![])),
+                // 内建类型
+                ("Atom" | "Nat" | "Trivial" | "Absurd" | "List" | "Vec" | "Either" | "=", _) => {
+                    resolve_type_rule(e, env)?
                 }
+                // nil 和 vecnil 必须附加类型
+                (s, []) => throw!(ErrorKind::CannotInferType { expr: s.to_owned() }),
                 // "The" 规则
                 ("the", [ty, expr]) => {
-                    let ty_o = resolve_type(ty, env)?;
+                    let (_, ty_o) = resolve_type(ty, env)?;
                     let expr_o = synthesize_with_type(expr, &ty_o, env)?;
                     (ty_o, expr_o)
                 }
@@ -220,31 +215,38 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
     }
 }
 
-/// 判断并计算表达式是一个类型（或 U）。
-/// 第四种 Judgement，见 Figure B.1。
+/// 判断并计算表达式是一个类型或 U(n)，返回其类型层级，相当于为 U(n) 特化的 synthesize。
+/// 改进的第四种 Judgement，见 Figure B.1。
 #[throws]
-fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> Type<!> {
+fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (ULevel, Type<!>) {
     use Expr::*;
     log::trace!("resolve {0} is a type", dpp(e, env));
+    // TODO: 改进 El 规则
     match e {
         Info(_, e) => resolve_type(e, env)?,
         // FunF-1
-        PiExpr(arg, ty, ty_ret) => {
-            let ty_o = resolve_type(ty, env)?;
-            let ty_ret_o = resolve_type(ty_ret, &env_ext(&env, arg.into(), &ty_o))?;
-            PiExpr(arg.clone(), Ref::new(ty_o), Ref::new(ty_ret_o))
+        PiExpr(arg, ty_a, ty_r) => {
+            let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
+            let (l_r, ty_r_o) = resolve_type(ty_r, &env_ext(&env, arg.into(), &ty_a_o))?;
+            (
+                std::cmp::max(l_a, l_r),
+                PiExpr(arg.clone(), Ref::new(ty_a_o), Ref::new(ty_r_o)),
+            )
         }
         // SigmaF-1
-        SigmaExpr(arg, ty, ty_d) => {
-            let ty_o = resolve_type(ty, env)?;
-            let ty_d_o = resolve_type(ty_d, &env_ext(&env, arg.into(), &ty_o))?;
-            SigmaExpr(arg.clone(), Ref::new(ty_o), Ref::new(ty_d_o))
+        SigmaExpr(arg, ty_a, ty_d) => {
+            let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
+            let (l_d, ty_d_o) = resolve_type(ty_d, &env_ext(&env, arg.into(), &ty_a_o))?;
+            (
+                std::cmp::max(l_a, l_d),
+                SigmaExpr(arg.clone(), Ref::new(ty_a_o), Ref::new(ty_d_o)),
+            )
         }
         BuiltinApply(bf, args) => {
             match (&**bf, &**args) {
                 // 内建单例对象
                 (s, []) => match s {
-                    "Atom" | "Nat" | "Trivial" | "Absurd" => BuiltinApply(bf.clone(), vec![]),
+                    "Atom" | "Nat" | "Trivial" | "Absurd" => (0, BuiltinApply(bf.clone(), vec![])),
                     _ => throw!(ErrorKind::TypeNotMatch {
                         expected: "type".to_owned(),
                         given: bf.to_string()
@@ -252,18 +254,26 @@ fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> Type<!> {
                 },
                 // ListF
                 ("List", [ty_e]) => {
-                    let ty_e_o = resolve_type(ty_e, env)?;
-                    BuiltinApply(bf.clone(), vec![ty_e_o])
+                    let (l, ty_e_o) = resolve_type(ty_e, env)?;
+                    (l, BuiltinApply(bf.clone(), vec![ty_e_o]))
                 }
                 _ => unreachable!(),
             }
         }
         // UF
-        U(n) => U(*n),
+        U(n) => (n + 1, U(*n)),
         //Literal, Lambda, Identifier, Apply
         // El
-        _ => synthesize_with_type(e, &U(0), env)?,
+        _ => (0, synthesize_with_type(e, &U(0), env)?),
     }
+}
+
+// 将 resolve_type 的返回值包装为 (U(n), t_o)
+#[inline]
+#[throws]
+fn resolve_type_rule<M: fmt::Display>(ty: &Expr<M>, env: &Env) -> (Type<!>, Type<!>) {
+    let (l, t_o) = resolve_type(ty, env)?;
+    (Expr::U(l), t_o)
 }
 
 /// 检查是否相同类型
