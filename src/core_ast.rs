@@ -450,18 +450,35 @@ const PIE_BUILTIN_FUNCTIONS: [(&str, usize); _] = [
 // 内建无参数类型
 #[allow(non_upper_case_globals)]
 pub mod builtin_type {
-    use super::Expr;
+    use super::*;
 
     macro_rules! claim_builtin_types {
         ($(($tynm:ident, $tyf:ident)),+ $(,)?) => {
             thread_local! {
                 $(
-                pub static $tynm: Expr<!> = Expr::BuiltinApply(stringify!($tynm).into(), vec![]);
+                static $tynm: Expr<!> = Expr::BuiltinApply(stringify!($tynm).into(), vec![]);
                 )+
             }
             $(
+                #[inline]
                 pub fn $tyf() -> Expr<!> {
                     $tynm.with(Clone::clone)
+                }
+            )+
+        };
+    }
+
+    macro_rules! claim_builtin_types_with_args {
+        ($(($tynm:ident, $tyf:ident, $($arg:ident),+)),+ $(,)?) => {
+            thread_local! {
+                $(
+                static $tynm: Ref<str> = stringify!($tynm).into();
+                )+
+            }
+            $(
+                #[inline]
+                pub fn $tyf($($arg: Expr<!>),+) -> Expr<!> {
+                    Expr::BuiltinApply($tynm.with(Clone::clone), vec![$($arg),+])
                 }
             )+
         };
@@ -472,5 +489,21 @@ pub mod builtin_type {
         (Trivial, trivial),
         (Atom, atom),
         (Nat, nat),
+    }
+
+    claim_builtin_types_with_args! {
+        (List, list, t),
+        (Vec, vec, t, l),
+        (Either, either, l, r),
+    }
+
+    // (=, equal, t, l, r),
+    thread_local! {
+        static Equal: Ref<str> = "=".into();
+    }
+
+    #[inline]
+    pub fn equal(t: Expr<!>, l: Expr<!>, r: Expr<!>) -> Expr<!> {
+        Expr::BuiltinApply(Equal.with(Clone::clone), vec![t, l, r])
     }
 }

@@ -263,7 +263,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                 // ListI-2
                 ("::", [e, es]) => {
                     let (ty_e_o, e_o) = synthesize(e, env)?;
-                    let ty_list = BuiltinApply("List".into(), vec![ty_e_o]);
+                    let ty_list = bty::list(ty_e_o);
                     let es_o = synthesize_with_type(es, &ty_list, env)?;
                     (ty_list, BuiltinApply(bf.clone(), vec![e_o, es_o]))
                 }
@@ -290,8 +290,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                     let (ty_v, v_o) = synthesize(v, env)?;
                     try_match! { let BuiltinApply("Vec", [ty_e, len]) = &ty_v; env };
                     if is_literal_add1(&len) {
-                        let ty_subv =
-                            BuiltinApply("Vec".into(), vec![ty_e.clone(), literal_sub1(len)]);
+                        let ty_subv = bty::vec(ty_e.clone(), literal_sub1(len));
                         (ty_subv, BuiltinApply(bf.clone(), vec![v_o]))
                     } else {
                         throw!(ErrorKind::TypeNotMatch {
@@ -349,13 +348,13 @@ fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (ULevel, Type<!>) {
                 // ListF
                 ("List", [ty_e]) => {
                     let (l, ty_e_o) = resolve_type(ty_e, env)?;
-                    (l, BuiltinApply(bf.clone(), vec![ty_e_o]))
+                    (l, bty::list(ty_e_o))
                 }
                 // VecF
                 ("Vec", [ty, len]) => {
                     let (l, ty_o) = resolve_type(ty, env)?;
                     let len_o = synthesize_with_type(len, &bty::nat(), env)?;
-                    (l, BuiltinApply(bf.clone(), vec![ty_o, len_o]))
+                    (l, bty::vec(ty_o, len_o))
                 }
                 _ => unreachable!(),
             }
