@@ -15,7 +15,7 @@ type Error = LocatedError<ErrorKind>;
 pub enum ErrorKind {
     TypeNotMatch { expected: String, given: String },
     CannotInferType { expr: String },
-    NotSame(String, String),
+    NotSame(String, String, String),
 }
 
 impl fmt::Display for ErrorKind {
@@ -28,8 +28,8 @@ impl fmt::Display for ErrorKind {
             CannotInferType { expr } => {
                 write!(f, "cannot infer the type of `{}`", expr)
             }
-            NotSame(x, y) => {
-                write!(f, "`{}` and `{}` are not the same", x, y)
+            NotSame(x, y, t) => {
+                write!(f, "`{}` and `{}` are not the same `{}`", x, y, t)
             }
         }
     }
@@ -411,15 +411,11 @@ fn resolve_type_rule<M: fmt::Display>(ty: &Expr<M>, env: &Env) -> (Type<!>, Type
 #[throws]
 fn type_check_same(ty1: &Type<!>, ty2: &Type<!>, env: &Env) {
     use Expr::*;
-    log::trace!(
-        "check if {} and {} are the same type",
-        dpp(ty1, env),
-        dpp(ty2, env)
-    );
     if !is_type_check_same(ty1, ty2, env) {
         throw!(ErrorKind::NotSame(
             dpp(ty1, env).to_string(),
-            dpp(ty2, env).to_string()
+            dpp(ty2, env).to_string(),
+            "(U _)".to_owned(),
         ));
     }
 }
@@ -427,7 +423,7 @@ fn type_check_same(ty1: &Type<!>, ty2: &Type<!>, env: &Env) {
 fn is_type_check_same(ty1: &Type<!>, ty2: &Type<!>, env: &Env) -> bool {
     use Expr::*;
     log::trace!(
-        "check {} and {} are the same type",
+        "check `{}` and `{}` are the same type",
         dpp(ty1, env),
         dpp(ty2, env)
     );
@@ -447,15 +443,52 @@ fn is_type_check_same(ty1: &Type<!>, ty2: &Type<!>, env: &Env) -> bool {
 }
 
 /// 检查是否相同表达式
+/// 认为 `c1: ct` 与 `c2: ct` 已满足
 /// 第八种 Judgement，见 Figure B.1。
 #[throws]
 fn expr_check_same(c1: &Expr<!>, c2: &Expr<!>, ct: &Type<!>, env: &Env) {
+    if !is_expr_check_same(c1, c2, ct, env) {
+        throw!(ErrorKind::NotSame(
+            dpp(c1, env).to_string(),
+            dpp(c2, env).to_string(),
+            dpp(ct, env).to_string(),
+        ));
+    }
+}
+
+fn is_expr_check_same(c1: &Expr<!>, c2: &Expr<!>, ct: &Type<!>, env: &Env) -> bool {
+    use Expr::*;
     log::trace!(
-        "check {} and {} are the same expression",
+        "check `{}` and `{}` are the same `{}`",
         dpp(c1, env),
-        dpp(c2, env)
+        dpp(c2, env),
+        dpp(ct, env),
     );
-    todo!()
+    // TODO: 比较前充分计算 c1、c2、ct
+    match (c1, c2) {
+        (Identifier(id1), Identifier(id2)) => id1 == id2,
+        (U(m), U(n)) => m == n,
+        // 比较自然数，考虑字面量和构造器表示
+        (Literal(ast::Literal::Nat(m)), Literal(ast::Literal::Nat(n))) => m == n,
+        (BuiltinApply(f, args), Literal(ast::Literal::Nat(n)))
+        | (Literal(ast::Literal::Nat(n)), BuiltinApply(f, args)) => match (&**f, &**args, n) {
+            ("zero", _, 0) => true,
+            ("zero", _, n) => false,
+            ("add1", [_], 0) => false,
+            ("add1", [p], n) => is_expr_check_same(p, &Literal(ast::Literal::Nat(n - 1)), ct, env),
+            _ => unreachable!(),
+        },
+        (BuiltinApply(f1, args1), BuiltinApply(f2, args2)) => {
+            match (&**f1, &**args1, &**f2, &**args2) {
+                ("zero", _, "zero", _) => true,
+                ("add1", [p1], "add1", [p2]) => is_expr_check_same(p1, p2, ct, env),
+                _ => todo!(),
+            }
+        }
+        _ => {
+            todo!()
+        }
+    }
 }
 
 /// 直接从字面量推导类型
