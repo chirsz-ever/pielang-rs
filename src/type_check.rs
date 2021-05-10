@@ -189,6 +189,13 @@ pub fn synthesize_with_type<M: fmt::Display>(e: &Expr<M>, ty: &Type<!>, env: &En
                     let rt_o = synthesize_with_type(rt, ty_r, env)?;
                     BuiltinApply(bf.clone(), vec![rt_o])
                 }
+                // EqI
+                ("same", [mid], "=", [ty_x, from, to]) => {
+                    let mid_o = synthesize_with_type(mid, ty_x, env)?;
+                    expr_check_same(from, &mid_o, ty_x, env)?;
+                    expr_check_same(&mid_o, to, ty_x, env)?;
+                    BuiltinApply(bf.clone(), vec![mid_o])
+                }
                 _ => switch_rule(e, ty, env)?,
             }
         }
@@ -371,6 +378,13 @@ fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (ULevel, Type<!>) {
                     let (l_l, ty_l_o) = resolve_type(ty_l, env)?;
                     let (l_r, ty_r_o) = resolve_type(ty_r, env)?;
                     (std::cmp::max(l_l, l_r), bty::either(ty_l_o, ty_r_o))
+                }
+                // EqF
+                ("=", [ty, from, to]) => {
+                    let (l, ty_o) = resolve_type(ty, env)?;
+                    let from_o = synthesize_with_type(from, &ty_o, env)?;
+                    let to_o = synthesize_with_type(to, &ty_o, env)?;
+                    (l, bty::equal(ty_o, from_o, to_o))
                 }
                 _ => unreachable!(),
             }
