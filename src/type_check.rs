@@ -396,12 +396,13 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                     // FIXME: 在此需要编译期计算
                     let ty_b = Apply(m_o_ref.clone(), Ref::new(Literal(ast::Literal::Nat(0))));
                     let b_o = synthesize_with_type(b, &ty_b, env)?;
+                    // s : (k : Nat) -> (m k) -> (m (add1 k))
                     let ty_s = make_pi!(
                         bty::nat(),
                         Apply(m_o_ref.clone(), Ref::new(Identifier(0))),
                         Apply(
                             m_o_ref.clone(),
-                            Ref::new(BuiltinApply("add1".into(), vec![Identifier(0)])),
+                            Ref::new(BuiltinApply("add1".into(), vec![Identifier(1)])),
                         )
                     );
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
