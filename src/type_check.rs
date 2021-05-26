@@ -339,6 +339,36 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                     // FIXME: TLT 中需要多一层 the 表达式
                     (ty_b, BuiltinApply(bf.clone(), vec![t_o, b_o, s_o]))
                 }
+                // NatE-2
+                ("iter-Nat", [t, b, s]) => {
+                    let t_o = synthesize_with_type(t, &bty::nat(), env)?;
+                    let (ty_b, b_o) = synthesize(b, env)?;
+                    let ty_s = PiExpr(
+                        Argument::Dummy,
+                        Ref::new(ty_b.clone()),
+                        Ref::new(ty_b.clone()),
+                    );
+                    let s_o = synthesize_with_type(s, &ty_s, env)?;
+                    // FIXME: TLT 中需要多一层 the 表达式
+                    (ty_b, BuiltinApply(bf.clone(), vec![t_o, b_o, s_o]))
+                }
+                // NatE-3
+                ("rec-Nat", [t, b, s]) => {
+                    let t_o = synthesize_with_type(t, &bty::nat(), env)?;
+                    let (ty_b, b_o) = synthesize(b, env)?;
+                    let ty_s = PiExpr(
+                        Argument::Dummy,
+                        Ref::new(bty::nat()),
+                        Ref::new(PiExpr(
+                            Argument::Dummy,
+                            Ref::new(ty_b.clone()),
+                            Ref::new(ty_b.clone()),
+                        )),
+                    );
+                    let s_o = synthesize_with_type(s, &ty_s, env)?;
+                    // FIXME: TLT 中需要多一层 the 表达式
+                    (ty_b, BuiltinApply(bf.clone(), vec![t_o, b_o, s_o]))
+                }
                 _ => unreachable!(),
             }
         }
