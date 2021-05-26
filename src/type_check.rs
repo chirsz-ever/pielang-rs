@@ -324,12 +324,20 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                 }
                 // SigmaE-2
                 ("cdr", [pr]) => {
-                    // FIXME!
                     let (ty_pr, pr_o) = synthesize(pr, env)?;
                     try_match! { let SigmaExpr(_x, ty_a, ty_d) = &ty_pr; env };
                     let car_pr = BuiltinApply("car".into(), vec![pr_o.clone()]);
+                    // FIXME!
                     let ty_d_o = substitute(ty_d, "", &car_pr, env);
                     (Expr::clone(ty_a), BuiltinApply(bf.clone(), vec![pr_o]))
+                }
+                // NatE-1
+                ("which-Nat", [t, b, s]) => {
+                    let t_o = synthesize_with_type(t, &bty::nat(), env)?;
+                    let (ty_b, b_o) = synthesize(b, env)?;
+                    let s_o = synthesize_with_type(s, &ty_b, env)?;
+                    // FIXME: TLT 中需要多一层 the 表达式
+                    (ty_b, BuiltinApply(bf.clone(), vec![t_o, b_o, s_o]))
                 }
                 _ => unreachable!(),
             }
