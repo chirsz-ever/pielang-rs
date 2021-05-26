@@ -316,6 +316,21 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                         })
                     }
                 }
+                // SigmaE-1
+                ("car", [pr]) => {
+                    let (ty_pr, pr_o) = synthesize(pr, env)?;
+                    try_match! { let SigmaExpr(_x, ty_a, ty_d) = &ty_pr; env };
+                    (Expr::clone(ty_a), BuiltinApply(bf.clone(), vec![pr_o]))
+                }
+                // SigmaE-2
+                ("cdr", [pr]) => {
+                    // FIXME!
+                    let (ty_pr, pr_o) = synthesize(pr, env)?;
+                    try_match! { let SigmaExpr(_x, ty_a, ty_d) = &ty_pr; env };
+                    let car_pr = BuiltinApply("car".into(), vec![pr_o.clone()]);
+                    let ty_d_o = substitute(ty_d, "", &car_pr, env);
+                    (Expr::clone(ty_a), BuiltinApply(bf.clone(), vec![pr_o]))
+                }
                 _ => unreachable!(),
             }
         }
