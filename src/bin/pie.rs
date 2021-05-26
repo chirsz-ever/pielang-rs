@@ -1,7 +1,7 @@
 #![feature(never_type)]
 
 use core_ast::DBIPPrint as dpp;
-use fehler::{throws};
+use fehler::throws;
 use pielang::*;
 use rustyline::KeyEvent;
 use std::fs::File;
@@ -11,10 +11,12 @@ use type_check as tc;
 
 type Error = anyhow::Error;
 
+type Env = tc::Env;
+
 #[derive(Debug, StructOpt)]
 #[structopt(
     name = "pie-rs",
-    about = "Pie language interpreter implemented by Rust"
+    about = "Pie language interpreter implemented with Rust"
 )]
 struct Opt {
     /// Input file, use `-` to read from stdin.
@@ -23,14 +25,21 @@ struct Opt {
     /// Open REPL
     #[structopt(short, long = "repl")]
     pub interactive: bool,
+    /// Only run check type
+    #[structopt(short, long = "check")]
+    pub check_type_only: bool,
     /// Read and eval a pie expression from command line arguments
     #[structopt(short, long = "eval")]
     pub exprs: Vec<String>,
 }
 
-fn main() -> io::Result<()> {
+#[throws]
+fn main() {
     pretty_env_logger::init();
     let opt = Opt::from_args();
+    let parser = syntax::ExprParser::new();
+
+    let mut env = Env::new();
 
     // 如果有文件参数，先解释文件
     if let Some(input_arg) = opt.input.as_ref() {
@@ -43,19 +52,26 @@ fn main() -> io::Result<()> {
             &mut file_read
         };
 
-        match interpret(input) {
-            Ok(_) => {}
-            Err(e) => {
-                eprintln!("Error: {}", e);
-            }
-        }
-    } else if should_repl(&opt) {
-        repl();
+        interpret_file(input, opt.check_type_only, &mut env)?;
     }
 
-    Ok(())
+    for e in &opt.exprs {
+        let expr = parser.parse(e).map_err(|err| anyhow::anyhow!("{}", err))?;
+        let e_dbi = transform_expression(&expr)?;
+        if opt.check_type_only {
+            let (ty, _) = tc::synthesize(&e_dbi, &env)?;
+            println!("{}: {}", e, dpp(&ty, &env));
+        } else {
+            todo!()
+        }
+    }
+
+    if should_repl(&opt) {
+        repl(opt.check_type_only, &env)?;
+    }
 }
 
+/// 从简单语法树到核心语法树
 #[throws]
 fn transform_expression(expr: &ast::Expr) -> core_ast::Expr<!> {
     let unfold_expr = core_ast::unfold(expr)?;
@@ -63,13 +79,13 @@ fn transform_expression(expr: &ast::Expr) -> core_ast::Expr<!> {
 }
 
 #[throws]
-fn interpret(input: &mut dyn Read) {
+fn interpret_file(input: &mut dyn Read, _check_type_only: bool, _env: &mut Env) {
     use ast::*;
     use GlobalStatemant::*;
 
     let parser = syntax::GrammerParser::new();
     let mut buf = String::new();
-    input.read_to_string(&mut buf).expect("read input failed");
+    input.read_to_string(&mut buf)?;
     let stats = parser
         .parse(&buf)
         .map_err(|err| anyhow::anyhow!("{}", err))?;
@@ -98,14 +114,14 @@ fn should_repl(opt: &Opt) -> bool {
     opt.interactive || (opt.input.is_none() && opt.exprs.is_empty())
 }
 
-fn repl() {
+#[throws]
+fn repl(check_type_only: bool, env: &Env) {
     use rustyline::error::ReadlineError;
     use rustyline::{Cmd, Config, Editor};
     let conf = Config::builder().auto_add_history(true).build();
     let mut rl = Editor::<()>::with_config(conf);
     rl.bind_sequence(KeyEvent::ctrl('\\'), Cmd::Insert(1, String::from("λ")));
     let parser = syntax::ExprParser::new();
-    let env = tc::default_environment();
 
     for readline in rl.iter("> ") {
         match readline {
@@ -127,7 +143,11 @@ fn repl() {
                                 continue;
                             }
                         };
-                        println!("{}: {}", dpp(&e, &env), dpp(&ty, &env));
+                        if check_type_only {
+                            println!("{}: {}", dpp(&e, &env), dpp(&ty, &env));
+                        } else {
+                            todo!()
+                        }
                     }
                     Err(e) => {
                         println!("Error: {}", e);
