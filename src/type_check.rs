@@ -390,7 +390,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                 // NatE-4
                 ("ind-Nat", [t, m, b, s]) => {
                     let t_o = synthesize_with_type(t, &bty::nat(), env)?;
-                    let ty_m = PiExpr(Argument::Dummy, Ref::new(bty::nat()), Ref::new(U(0)));
+                    let ty_m = make_pi!(bty::nat(), U(0));
                     let m_o = synthesize_with_type(m, &ty_m, env)?;
                     let m_o_ref = Ref::new(m_o.clone());
                     // FIXME: 在此需要编译期计算
