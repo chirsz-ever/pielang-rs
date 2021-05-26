@@ -326,6 +326,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                 ("cdr", [pr]) => {
                     let (ty_pr, pr_o) = synthesize(pr, env)?;
                     try_match! { let SigmaExpr(_x, ty_a, ty_d) = &ty_pr; env };
+                    // FIXME: 在此需要编译期计算
                     let car_pr = BuiltinApply("car".into(), vec![pr_o.clone()]);
                     // FIXME!
                     let ty_d_o = substitute(ty_d, "", &car_pr, env);
@@ -368,6 +369,33 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     // FIXME: TLT 中需要多一层 the 表达式
                     (ty_b, BuiltinApply(bf.clone(), vec![t_o, b_o, s_o]))
+                }
+                // NatE-4
+                ("ind-Nat", [t, m, b, s]) => {
+                    let t_o = synthesize_with_type(t, &bty::nat(), env)?;
+                    let ty_m = PiExpr(Argument::Dummy, Ref::new(bty::nat()), Ref::new(U(0)));
+                    let m_o = Ref::new(synthesize_with_type(m, &ty_m, env)?);
+                    // FIXME: 在此需要编译期计算
+                    let ty_b = Apply(m_o.clone(), Ref::new(Literal(ast::Literal::Nat(0))));
+                    let b_o = synthesize_with_type(b, &ty_b, env)?;
+                    let ty_s = PiExpr(
+                        Argument::Dummy,
+                        Ref::new(bty::nat()),
+                        Ref::new(PiExpr(
+                            Argument::Dummy,
+                            Ref::new(Apply(m_o.clone(), Ref::new(Identifier(0)))),
+                            Ref::new(Apply(
+                                m_o.clone(),
+                                Ref::new(BuiltinApply("add1".into(), vec![Identifier(0)])),
+                            )),
+                        )),
+                    );
+                    let s_o = synthesize_with_type(s, &ty_s, env)?;
+                    let ty_o = Apply(m_o.clone(), Ref::new(t_o.clone()));
+                    (
+                        ty_o,
+                        BuiltinApply(bf.clone(), vec![t_o, Expr::clone(&m_o), b_o, s_o]),
+                    )
                 }
                 _ => unreachable!(),
             }
