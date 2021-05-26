@@ -81,6 +81,33 @@ macro_rules! match_builtin_args {
     };
 }
 
+macro_rules! make_pi {
+    ($ty_a:expr, $ty_r:expr $(,)?) => {
+        Expr::PiExpr(Argument::Dummy, Ref::new($ty_a), Ref::new($ty_r))
+    };
+    (ref $ty_a:expr, $ty_r:expr $(,)?) => {
+        Expr::PiExpr(Argument::Dummy, $ty_a, Ref::new($ty_r))
+    };
+    ($ty_a:expr, ref $ty_r:expr $(,)?) => {
+        Expr::PiExpr(Argument::Dummy, Ref::new($ty_a), $ty_r)
+    };
+    (ref $ty_a:expr, ref $ty_r:expr $(,)?) => {
+        Expr::PiExpr(Argument::Dummy, $ty_a, $ty_r)
+    };
+    ($ty_a:expr, $($e:tt)+) => {
+        Expr::PiExpr(
+            Argument::Dummy,
+            Ref::new($ty_a),
+            Ref::new(make_pi!($($e)+)))
+    };
+    (ref $ty_a:expr, $($e:tt)+) => {
+        Expr::PiExpr(
+            Argument::Dummy,
+            $ty_a,
+            Ref::new(make_pi!($($e)+)))
+    };
+}
+
 // TODO: 使用 De Bruijn 方法解决变量名、作用域的各种问题
 
 /// 执行 expr[var/e]，将 expr 中自由出现的 var 替换为 e，e 应当是没有自由变量的。
@@ -344,11 +371,8 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                 ("iter-Nat", [t, b, s]) => {
                     let t_o = synthesize_with_type(t, &bty::nat(), env)?;
                     let (ty_b, b_o) = synthesize(b, env)?;
-                    let ty_s = PiExpr(
-                        Argument::Dummy,
-                        Ref::new(ty_b.clone()),
-                        Ref::new(ty_b.clone()),
-                    );
+                    let ty_b_ref = Ref::new(ty_b.clone());
+                    let ty_s = make_pi!(ref ty_b_ref.clone(), ref ty_b_ref);
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     // FIXME: TLT 中需要多一层 the 表达式
                     (ty_b, BuiltinApply(bf.clone(), vec![t_o, b_o, s_o]))
@@ -357,15 +381,8 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                 ("rec-Nat", [t, b, s]) => {
                     let t_o = synthesize_with_type(t, &bty::nat(), env)?;
                     let (ty_b, b_o) = synthesize(b, env)?;
-                    let ty_s = PiExpr(
-                        Argument::Dummy,
-                        Ref::new(bty::nat()),
-                        Ref::new(PiExpr(
-                            Argument::Dummy,
-                            Ref::new(ty_b.clone()),
-                            Ref::new(ty_b.clone()),
-                        )),
-                    );
+                    let ty_b_ref = Ref::new(ty_b.clone());
+                    let ty_s = make_pi!(bty::nat(), ref ty_b_ref.clone(), ref ty_b_ref);
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     // FIXME: TLT 中需要多一层 the 表达式
                     (ty_b, BuiltinApply(bf.clone(), vec![t_o, b_o, s_o]))
@@ -374,28 +391,22 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                 ("ind-Nat", [t, m, b, s]) => {
                     let t_o = synthesize_with_type(t, &bty::nat(), env)?;
                     let ty_m = PiExpr(Argument::Dummy, Ref::new(bty::nat()), Ref::new(U(0)));
-                    let m_o = Ref::new(synthesize_with_type(m, &ty_m, env)?);
+                    let m_o = synthesize_with_type(m, &ty_m, env)?;
+                    let m_o_ref = Ref::new(m_o.clone());
                     // FIXME: 在此需要编译期计算
-                    let ty_b = Apply(m_o.clone(), Ref::new(Literal(ast::Literal::Nat(0))));
+                    let ty_b = Apply(m_o_ref.clone(), Ref::new(Literal(ast::Literal::Nat(0))));
                     let b_o = synthesize_with_type(b, &ty_b, env)?;
-                    let ty_s = PiExpr(
-                        Argument::Dummy,
-                        Ref::new(bty::nat()),
-                        Ref::new(PiExpr(
-                            Argument::Dummy,
-                            Ref::new(Apply(m_o.clone(), Ref::new(Identifier(0)))),
-                            Ref::new(Apply(
-                                m_o.clone(),
-                                Ref::new(BuiltinApply("add1".into(), vec![Identifier(0)])),
-                            )),
-                        )),
+                    let ty_s = make_pi!(
+                        bty::nat(),
+                        Apply(m_o_ref.clone(), Ref::new(Identifier(0))),
+                        Apply(
+                            m_o_ref.clone(),
+                            Ref::new(BuiltinApply("add1".into(), vec![Identifier(0)])),
+                        )
                     );
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
-                    let ty_o = Apply(m_o.clone(), Ref::new(t_o.clone()));
-                    (
-                        ty_o,
-                        BuiltinApply(bf.clone(), vec![t_o, Expr::clone(&m_o), b_o, s_o]),
-                    )
+                    let ty_o = Apply(m_o_ref.clone(), Ref::new(t_o.clone()));
+                    (ty_o, BuiltinApply(bf.clone(), vec![t_o, m_o, b_o, s_o]))
                 }
                 _ => unreachable!(),
             }
