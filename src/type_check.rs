@@ -409,6 +409,22 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                     let ty_o = Apply(m_o_ref.clone(), Ref::new(t_o.clone()));
                     (ty_o, BuiltinApply(bf.clone(), vec![t_o, m_o, b_o, s_o]))
                 }
+                // ListE-1
+                ("rec-List", [t, b, s]) => {
+                    let (ty_t, t_o) = synthesize(t, env)?;
+                    try_match! { let BuiltinApply("List", [ty_e]) = &ty_t; env }
+                    let (ty_b, b_o) = synthesize(b, env)?;
+                    let ty_b_ref = Ref::new(ty_b.clone());
+                    let ty_s = make_pi!(
+                        ty_e.clone(),
+                        ty_t,
+                        ref ty_b_ref.clone(),
+                        ref ty_b_ref,
+                    );
+                    let s_o = synthesize_with_type(s, &ty_s, env)?;
+                    // FIXME: TLT 中需要多一层 the 表达式
+                    (ty_b, BuiltinApply(bf.clone(), vec![t_o, b_o, s_o]))
+                }
                 _ => unreachable!(),
             }
         }
