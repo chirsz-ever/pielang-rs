@@ -81,7 +81,7 @@ macro_rules! match_builtin_args {
     };
 }
 
-macro_rules! make_pi {
+macro_rules! pi {
     ($ty_a:expr, $ty_r:expr $(,)?) => {
         Expr::PiExpr(Argument::Dummy, Ref::new($ty_a), Ref::new($ty_r))
     };
@@ -98,13 +98,40 @@ macro_rules! make_pi {
         Expr::PiExpr(
             Argument::Dummy,
             Ref::new($ty_a),
-            Ref::new(make_pi!($($e)+)))
+            Ref::new(pi!($($e)+)))
     };
     (ref $ty_a:expr, $($e:tt)+) => {
         Expr::PiExpr(
             Argument::Dummy,
             $ty_a,
-            Ref::new(make_pi!($($e)+)))
+            Ref::new(pi!($($e)+)))
+    };
+}
+
+macro_rules! app {
+    ($f:expr, $a:expr $(,)?) => {
+        Expr::Apply(Ref::new($f), Ref::new($a))
+    };
+    (ref $f:expr, $a:expr $(,)?) => {
+        Expr::Apply($f, Ref::new($a))
+    };
+    ($f:expr, ref $a:expr $(,)?) => {
+        Expr::Apply(Ref::new($f), $a)
+    };
+    (ref $f:expr, ref $a:expr $(,)?) => {
+        Expr::Apply($f, $a)
+    };
+    ($f:expr, $a:expr, $($tt:tt)+) => {
+        app!(Expr::Apply(Ref::new($f), Ref::new($a)), $($tt)+)
+    };
+    (ref $f:expr, $a:expr, $($tt:tt)+) => {
+        app!(Expr::Apply($f, Ref::new($a)), $($tt)+)
+    };
+    ($f:expr, ref $a:expr, $($tt:tt)+) => {
+        app!(Expr::Apply(Ref::new($f), $a), $($tt)+)
+    };
+    (ref $f:expr, ref $a:expr, $($tt:tt)+) => {
+        app!(Expr::Apply($f, $a), $($tt)+)
     };
 }
 
@@ -283,7 +310,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
             try_match!(let PiExpr(var, ty_arg, ty_ret) = &ty_f; &env);
             let arg_o = synthesize_with_type(arg, &ty_arg, env)?;
             let ty = substitute_arg(&ty_ret, &var, &arg_o, env);
-            (ty, Apply(Ref::new(f_o), Ref::new(arg_o)))
+            (ty, app!(f_o, arg_o))
         }
         // 目前还未引入 Universe Hierarchy，但这条规则似乎没有问题
         U(n) => (U(n + 1), U(*n)),
@@ -372,7 +399,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                     let t_o = synthesize_with_type(t, &bty::nat(), env)?;
                     let (ty_b, b_o) = synthesize(b, env)?;
                     let ty_b_ref = Ref::new(ty_b.clone());
-                    let ty_s = make_pi!(ref ty_b_ref.clone(), ref ty_b_ref);
+                    let ty_s = pi!(ref ty_b_ref.clone(), ref ty_b_ref);
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     // FIXME: TLT 中需要多一层 the 表达式
                     (ty_b, BuiltinApply(bf.clone(), vec![t_o, b_o, s_o]))
@@ -382,7 +409,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                     let t_o = synthesize_with_type(t, &bty::nat(), env)?;
                     let (ty_b, b_o) = synthesize(b, env)?;
                     let ty_b_ref = Ref::new(ty_b.clone());
-                    let ty_s = make_pi!(bty::nat(), ref ty_b_ref.clone(), ref ty_b_ref);
+                    let ty_s = pi!(bty::nat(), ref ty_b_ref.clone(), ref ty_b_ref);
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     // FIXME: TLT 中需要多一层 the 表达式
                     (ty_b, BuiltinApply(bf.clone(), vec![t_o, b_o, s_o]))
@@ -390,23 +417,20 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                 // NatE-4
                 ("ind-Nat", [t, m, b, s]) => {
                     let t_o = synthesize_with_type(t, &bty::nat(), env)?;
-                    let ty_m = make_pi!(bty::nat(), U(0));
+                    let ty_m = pi!(bty::nat(), U(0));
                     let m_o = synthesize_with_type(m, &ty_m, env)?;
                     let m_o_ref = Ref::new(m_o.clone());
                     // FIXME: 在此需要编译期计算
-                    let ty_b = Apply(m_o_ref.clone(), Ref::new(Literal(ast::Literal::Nat(0))));
+                    let ty_b = app!(ref m_o_ref.clone(), Literal(ast::Literal::Nat(0)));
                     let b_o = synthesize_with_type(b, &ty_b, env)?;
                     // s : (k : Nat) -> (m k) -> (m (add1 k))
-                    let ty_s = make_pi!(
+                    let ty_s = pi!(
                         bty::nat(),
-                        Apply(m_o_ref.clone(), Ref::new(Identifier(0))),
-                        Apply(
-                            m_o_ref.clone(),
-                            Ref::new(BuiltinApply("add1".into(), vec![Identifier(1)])),
-                        )
+                        app!(ref m_o_ref.clone(), Identifier(0)),
+                        app!(ref m_o_ref.clone(), BuiltinApply("add1".into(), vec![Identifier(1)])),
                     );
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
-                    let ty_o = Apply(m_o_ref.clone(), Ref::new(t_o.clone()));
+                    let ty_o = app!(ref m_o_ref.clone(), t_o.clone());
                     (ty_o, BuiltinApply(bf.clone(), vec![t_o, m_o, b_o, s_o]))
                 }
                 // ListE-1
@@ -415,7 +439,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                     try_match! { let BuiltinApply("List", [ty_e]) = &ty_t; env }
                     let (ty_b, b_o) = synthesize(b, env)?;
                     let ty_b_ref = Ref::new(ty_b.clone());
-                    let ty_s = make_pi!(
+                    let ty_s = pi!(
                         ty_e.clone(),
                         ty_t,
                         ref ty_b_ref.clone(),
@@ -429,26 +453,20 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                 ("ind-List", [t, m, b, s]) => {
                     let (ty_t, t_o) = synthesize(t, env)?;
                     try_match! { let BuiltinApply("List", [ty_e]) = &ty_t; env }
-                    let ty_m = make_pi!(ty_t.clone(), U(0));
+                    let ty_m = pi!(ty_t.clone(), U(0));
                     let m_o = synthesize_with_type(m, &ty_m, env)?;
                     // FIXME: 在此需要编译期计算
-                    let ty_b = Apply(
-                        Ref::new(m_o.clone()),
-                        Ref::new(BuiltinApply("nil".into(), vec![])),
-                    );
+                    let ty_b = app!(m_o.clone(), BuiltinApply("nil".into(), vec![]));
                     let b_o = synthesize_with_type(b, &ty_b, env)?;
                     let ty_b_ref = Ref::new(ty_b.clone());
-                    let ty_s = make_pi!(
+                    let ty_s = pi!(
                         ty_e.clone(),
                         ty_t,
-                        Apply(Ref::new(m_o.clone()), Ref::new(Identifier(0))),
-                        Apply(
-                            Ref::new(m_o.clone()),
-                            Ref::new(BuiltinApply(
-                                "::".into(),
-                                vec![Identifier(1), Identifier(0)]
-                            ))
-                        ),
+                        app!(m_o.clone(), Identifier(0)),
+                        app!(
+                            m_o.clone(),
+                            BuiltinApply("::".into(), vec![Identifier(1), Identifier(0)])
+                        )
                     );
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     // FIXME: TLT 中需要多一层 the 表达式
