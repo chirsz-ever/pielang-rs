@@ -135,6 +135,12 @@ macro_rules! app {
     };
 }
 
+macro_rules! bapp {
+    ($bf:expr $(,$a:expr)* $(,)?) => {
+        Expr::BuiltinApply($bf.into(), vec![$($a),*])
+    };
+}
+
 // TODO: 使用 De Bruijn 方法解决变量名、作用域的各种问题
 
 /// 执行 expr[var/e]，将 expr 中自由出现的 var 替换为 e，e 应当是没有自由变量的。
@@ -381,7 +387,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                     let (ty_pr, pr_o) = synthesize(pr, env)?;
                     try_match! { let SigmaExpr(_x, ty_a, ty_d) = &ty_pr; env };
                     // FIXME: 在此需要编译期计算
-                    let car_pr = BuiltinApply("car".into(), vec![pr_o.clone()]);
+                    let car_pr = bapp!("car", pr_o.clone());
                     // FIXME!
                     let ty_d_o = substitute(ty_d, "", &car_pr, env);
                     (Expr::clone(ty_a), BuiltinApply(bf.clone(), vec![pr_o]))
@@ -456,17 +462,14 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                     let ty_m = pi!(ty_t.clone(), U(0));
                     let m_o = synthesize_with_type(m, &ty_m, env)?;
                     // FIXME: 在此需要编译期计算
-                    let ty_b = app!(m_o.clone(), BuiltinApply("nil".into(), vec![]));
+                    let ty_b = app!(m_o.clone(), bapp!("nil"));
                     let b_o = synthesize_with_type(b, &ty_b, env)?;
                     let ty_b_ref = Ref::new(ty_b.clone());
                     let ty_s = pi!(
                         ty_e.clone(),
                         ty_t,
                         app!(m_o.clone(), Identifier(0)),
-                        app!(
-                            m_o.clone(),
-                            BuiltinApply("::".into(), vec![Identifier(1), Identifier(0)])
-                        )
+                        app!(m_o.clone(), bapp!("::", Identifier(1), Identifier(0)))
                     );
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     // FIXME: TLT 中需要多一层 the 表达式
