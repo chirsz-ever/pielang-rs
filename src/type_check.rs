@@ -461,15 +461,16 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                     try_match! { let BuiltinApply("List", [ty_e]) = &ty_t; env }
                     let ty_m = pi!(ty_t.clone(), U(0));
                     let m_o = synthesize_with_type(m, &ty_m, env)?;
+                    let m_o_ref = Ref::new(m_o);
                     // FIXME: 在此需要编译期计算
-                    let ty_b = app!(m_o.clone(), bapp!("nil"));
+                    let ty_b = app!(ref m_o_ref.clone(), bapp!("nil"));
                     let b_o = synthesize_with_type(b, &ty_b, env)?;
                     let ty_b_ref = Ref::new(ty_b.clone());
                     let ty_s = pi!(
                         ty_e.clone(),
                         ty_t,
-                        app!(m_o.clone(), Identifier(0)),
-                        app!(m_o.clone(), bapp!("::", Identifier(1), Identifier(0)))
+                        app!(ref m_o_ref.clone(), Identifier(0)),
+                        app!(ref m_o_ref, bapp!("::", Identifier(1), Identifier(0)))
                     );
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     // FIXME: TLT 中需要多一层 the 表达式
