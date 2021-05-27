@@ -425,6 +425,35 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                     // FIXME: TLT 中需要多一层 the 表达式
                     (ty_b, BuiltinApply(bf.clone(), vec![t_o, b_o, s_o]))
                 }
+                // ListE-2
+                ("ind-List", [t, m, b, s]) => {
+                    let (ty_t, t_o) = synthesize(t, env)?;
+                    try_match! { let BuiltinApply("List", [ty_e]) = &ty_t; env }
+                    let ty_m = make_pi!(ty_t.clone(), U(0));
+                    let m_o = synthesize_with_type(m, &ty_m, env)?;
+                    // FIXME: 在此需要编译期计算
+                    let ty_b = Apply(
+                        Ref::new(m_o.clone()),
+                        Ref::new(BuiltinApply("nil".into(), vec![])),
+                    );
+                    let b_o = synthesize_with_type(b, &ty_b, env)?;
+                    let ty_b_ref = Ref::new(ty_b.clone());
+                    let ty_s = make_pi!(
+                        ty_e.clone(),
+                        ty_t,
+                        Apply(Ref::new(m_o.clone()), Ref::new(Identifier(0))),
+                        Apply(
+                            Ref::new(m_o.clone()),
+                            Ref::new(BuiltinApply(
+                                "::".into(),
+                                vec![Identifier(1), Identifier(0)]
+                            ))
+                        ),
+                    );
+                    let s_o = synthesize_with_type(s, &ty_s, env)?;
+                    // FIXME: TLT 中需要多一层 the 表达式
+                    (ty_b, BuiltinApply(bf.clone(), vec![t_o, b_o, s_o]))
+                }
                 _ => unreachable!(),
             }
         }
