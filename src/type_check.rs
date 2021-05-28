@@ -461,7 +461,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                     try_match! { let BuiltinApply("List", [ty_e]) = &ty_t; env }
                     let ty_m = pi!(ty_t.clone(), U(0));
                     let m_o = synthesize_with_type(m, &ty_m, env)?;
-                    let m_o_ref = Ref::new(m_o);
+                    let m_o_ref = Ref::new(m_o.clone());
                     // FIXME: 在此需要编译期计算
                     let ty_b = app!(ref m_o_ref.clone(), bapp!("nil"));
                     let b_o = synthesize_with_type(b, &ty_b, env)?;
@@ -470,11 +470,42 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                         ty_e.clone(),
                         ty_t,
                         app!(ref m_o_ref.clone(), Identifier(0)),
-                        app!(ref m_o_ref, bapp!("::", Identifier(1), Identifier(0)))
+                        app!(ref m_o_ref.clone(), bapp!("::", Identifier(1), Identifier(0)))
                     );
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
-                    // FIXME: TLT 中需要多一层 the 表达式
-                    (ty_b, BuiltinApply(bf.clone(), vec![t_o, b_o, s_o]))
+                    (
+                        app!(ref m_o_ref, t_o.clone()),
+                        BuiltinApply(bf.clone(), vec![t_o, m_o, b_o, s_o]),
+                    )
+                }
+                // VecE-3
+                ("ind-Vec", [l, t, m, b, s]) => {
+                    let l_o = synthesize_with_type(l, &bty::nat(), env)?;
+                    let (ty_t, t_o) = synthesize(t, env)?;
+                    try_match! { let BuiltinApply("Vec", [ty_e, n]) = &ty_t; env }
+                    expr_check_same(&l_o, &n, &bty::nat(), env)?;
+                    let ty_m = pi!(bty::nat(), bapp!("Vec", ty_e.clone(), Identifier(0)), U(0));
+                    let m_o = synthesize_with_type(m, &ty_m, env)?;
+                    let m_o_ref = Ref::new(m_o.clone());
+                    // FIXME: 在此需要编译期计算
+                    let ty_b = app!(ref m_o_ref.clone(), bapp!("zero"), bapp!("vecnil"));
+                    let b_o = synthesize_with_type(b, &ty_b, env)?;
+                    let ty_s = pi!(
+                        bty::nat(),
+                        ty_e.clone(),
+                        bapp!("Vec", ty_e.clone(), Identifier(1)),
+                        app!(ref m_o_ref.clone(), Identifier(2), Identifier(0)),
+                        app!(
+                            ref m_o_ref.clone(),
+                            bapp!("add1", Identifier(3)),
+                            bapp!("vec::", Identifier(2), Identifier(1))
+                        )
+                    );
+                    let s_o = synthesize_with_type(s, &ty_s, env)?;
+                    (
+                        app!(ref m_o_ref, l_o.clone(), t_o.clone()),
+                        BuiltinApply(bf.clone(), vec![l_o, t_o, m_o, b_o, s_o]),
+                    )
                 }
                 _ => unreachable!(),
             }
