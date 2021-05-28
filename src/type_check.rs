@@ -513,6 +513,23 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                         BuiltinApply(bf.clone(), vec![l_o, t_o, m_o.as_ref().clone(), b_o, s_o]),
                     )
                 }
+                // ListE-2
+                ("ind-Either", [t, m, bl, br]) => {
+                    let (ty_t, t_o) = synthesize(t, env)?;
+                    try_match! { let BuiltinApply("Either", [ty_p, ty_s]) = &ty_t; env }
+                    let ty_m = pi!(ty_t.clone(), U(0));
+                    let m_o = synthesize_with_type(m, &ty_m, env)?;
+                    let m_o = Ref::new(m_o);
+                    // FIXME: 在此需要编译期计算
+                    let ty_bl = pi!(ty_p.clone(), app!(ref m_o, bapp!("left", Identifier(0))));
+                    let bl_o = synthesize_with_type(bl, &ty_bl, env)?;
+                    let ty_br = pi!(ty_s.clone(), app!(ref m_o, bapp!("right", Identifier(0))));
+                    let br_o = synthesize_with_type(br, &ty_br, env)?;
+                    (
+                        app!(ref m_o, t_o.clone()),
+                        BuiltinApply(bf.clone(), vec![t_o, m_o.as_ref().clone(), bl_o, br_o]),
+                    )
+                }
                 _ => unreachable!(),
             }
         }
