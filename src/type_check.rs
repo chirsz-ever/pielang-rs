@@ -530,6 +530,11 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                         BuiltinApply(bf.clone(), vec![t_o, m_o.as_ref().clone(), bl_o, br_o]),
                     )
                 }
+                ("ind-Absurd", [t, m]) => {
+                    let t_o = synthesize_with_type(t, &bapp!("Absurd"), env)?;
+                    let (_lm, m_o) = resolve_type(m, env)?;
+                    (m_o.clone(), BuiltinApply(bf.clone(), vec![t_o, m_o]))
+                }
                 _ => unreachable!(),
             }
         }
