@@ -536,6 +536,57 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                     let (_lm, m_o) = resolve_type(m, env)?;
                     (m_o.clone(), BuiltinApply(bf.clone(), vec![t_o, m_o]))
                 }
+                // EqE-1
+                ("replace", [t, m, b]) => {
+                    let (ty_t, t_o) = synthesize(t, env)?;
+                    try_match! { let BuiltinApply("=", [ty_x, from, to]) = &ty_t; env }
+                    let m_o = pi!(ty_x.clone(), U(0));
+                    let m_o = Ref::new(m_o);
+                    let b_o = synthesize_with_type(b, &app!(ref m_o, from.clone()), env)?;
+                    (
+                        app!(ref m_o, to.clone()),
+                        bapp!(bf.clone(), t_o, m_o.as_ref().clone(), b_o),
+                    )
+                }
+                // EqE-2
+                ("cong", [t, f]) => {
+                    let (ty_t, t_o) = synthesize(t, env)?;
+                    try_match! { let BuiltinApply("=", [ty_x1, from, to]) = &ty_t; env }
+                    let (ty_f, f_o) = synthesize(f, env)?;
+                    try_match! { let PiExpr(_arg, ty_x2, ty_y) = &ty_f; env }
+                    type_check_same(ty_x1, ty_x2, env)?;
+                    let f_o = Ref::new(f_o);
+                    let ty = bapp!(
+                        "=",
+                        ty_y.as_ref().clone(),
+                        app!(ref f_o, from.clone()),
+                        app!(ref f_o, to.clone())
+                    );
+                    // FIXME: TLT 中需要多一个参数
+                    (ty, bapp!(bf.clone(), t_o, f_o.as_ref().clone()))
+                }
+                // EqE-3
+                ("symm", [t]) => {
+                    let (ty_t, t_o) = synthesize(t, env)?;
+                    try_match! { let BuiltinApply("=", [ty_x, from, to]) = &ty_t; env }
+                    (
+                        bapp!("=", ty_x.clone(), to.clone(), from.clone()),
+                        bapp!(bf.clone(), t_o),
+                    )
+                }
+                // EqE-4
+                ("trans", [t1, t2]) => {
+                    let (ty_t1, t1_o) = synthesize(t1, env)?;
+                    try_match! { let BuiltinApply("=", [ty_x, from, mid1]) = &ty_t1; env }
+                    let (ty_t2, t2_o) = synthesize(t2, env)?;
+                    try_match! { let BuiltinApply("=", [ty_y, mid2, to]) = &ty_t2; env }
+                    type_check_same(ty_x, ty_y, env)?;
+                    expr_check_same(mid1, mid2, ty_x, env)?;
+                    (
+                        bapp!("=", ty_x.clone(), from.clone(), to.clone()),
+                        bapp!(bf.clone(), t1_o, t2_o),
+                    )
+                }
                 _ => unreachable!(),
             }
         }
