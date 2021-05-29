@@ -587,6 +587,24 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                         bapp!(bf.clone(), t1_o, t2_o),
                     )
                 }
+                // EqE-5
+                ("ind-=", [t, m, b]) => {
+                    let (ty_t, t_o) = synthesize(t, env)?;
+                    try_match! { let BuiltinApply("=", [ty_x, from, to]) = &ty_t; env }
+                    let ty_m = pi!(
+                        ty_x.clone(),
+                        bapp!("=", ty_x.clone(), from.clone(), Identifier(0)),
+                        U(0)
+                    );
+                    let m_o = synthesize_with_type(m, &ty_m, env)?;
+                    let m_o = Ref::new(m_o);
+                    let ty_b = app!(ref m_o, from.clone(), bapp!("same", from.clone()));
+                    let b_o = synthesize_with_type(b, &ty_b, env)?;
+                    (
+                        app!(ref m_o, to.clone(), t_o.clone()),
+                        bapp!(bf.clone(), t_o, m_o.as_ref().clone(), b_o),
+                    )
+                }
                 _ => unreachable!(),
             }
         }
