@@ -617,7 +617,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
 /// 判断并计算表达式是一个类型或 U(n)，返回其类型层级，相当于为 U(n) 特化的 synthesize。
 /// 改进的第四种 Judgement，见 Figure B.1。
 #[throws]
-fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (ULevel, Type<!>) {
+pub fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (ULevel, Type<!>) {
     use Expr::*;
     log::trace!("resolve {0} is a type", dpp(e, env));
     // TODO: 改进 El 规则
@@ -735,7 +735,7 @@ fn is_type_check_same(ty1: &Type<!>, ty2: &Type<!>, env: &Env) -> bool {
 /// 认为 `c1: ct` 与 `c2: ct` 已满足
 /// 第八种 Judgement，见 Figure B.1。
 #[throws]
-fn expr_check_same(c1: &Expr<!>, c2: &Expr<!>, ct: &Type<!>, env: &Env) {
+pub fn expr_check_same(c1: &Expr<!>, c2: &Expr<!>, ct: &Type<!>, env: &Env) {
     if !is_expr_check_same(c1, c2, ct, env) {
         throw!(ErrorKind::NotSame(
             dpp(c1, env).to_string(),

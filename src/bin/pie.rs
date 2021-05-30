@@ -1,5 +1,6 @@
 #![feature(never_type)]
 
+use anyhow::Context as _;
 use core_ast::DBIPPrint as dpp;
 use fehler::throws;
 use pielang::*;
@@ -105,6 +106,9 @@ fn interpret_file(input: &mut dyn Read, _check_type_only: bool, _env: &mut Env) 
                 let e = transform_expression(&expr)?;
                 println!("{:?}", e);
             }
+            CheckSame(_, _, _, _) => {
+                todo!()
+            }
         }
     }
 }
@@ -116,12 +120,13 @@ fn should_repl(opt: &Opt) -> bool {
 
 #[throws]
 fn repl(check_type_only: bool, env: &Env) {
+    use ast::GlobalStatemant::*;
     use rustyline::error::ReadlineError;
     use rustyline::{Cmd, Config, Editor};
     let conf = Config::builder().auto_add_history(true).build();
     let mut rl = Editor::<()>::with_config(conf);
     rl.bind_sequence(KeyEvent::ctrl('\\'), Cmd::Insert(1, String::from("λ")));
-    let parser = syntax::ExprParser::new();
+    let parser = syntax::GlobalStatemantParser::new();
 
     for readline in rl.iter("> ") {
         match readline {
@@ -130,27 +135,48 @@ fn repl(check_type_only: bool, env: &Env) {
                 if line.is_empty() {
                     continue;
                 }
-                match parser
-                    .parse(&line)
-                    .map_err(|e| anyhow::anyhow!("{}", e))
-                    .and_then(|expr| transform_expression(&expr))
-                {
-                    Ok(e) => {
-                        let ty = match tc::synthesize(&e, &env) {
-                            Ok((ty, _)) => ty,
-                            Err(e) => {
-                                println!("Type Error: {}", e);
-                                continue;
+                match parser.parse(&line).map_err(|e| anyhow::anyhow!("{}", e)) {
+                    Ok(Expression(expr)) => {
+                        let do_expr = || -> anyhow::Result<()> {
+                            let e = transform_expression(&expr)?;
+                            let (ty, _e_o) =
+                                tc::synthesize(&e, &env).context("Can't determine a type")?;
+                            if check_type_only {
+                                println!("{}: {}", dpp(&e, &env), dpp(&ty, &env));
+                            } else {
+                                todo!()
                             }
+                            Ok(())
                         };
-                        if check_type_only {
-                            println!("{}: {}", dpp(&e, &env), dpp(&ty, &env));
-                        } else {
-                            todo!()
+                        match do_expr() {
+                            Ok(()) => {}
+                            Err(err) => eprintln!("Error: {:?}", err),
                         }
                     }
-                    Err(e) => {
-                        println!("Error: {}", e);
+                    Ok(Define(_, _, _)) => {
+                        eprintln!("`define` is not yet supported in REPL.")
+                    }
+                    Ok(Claim(_, _, _)) => {
+                        eprintln!("`claim` is not yet supported in REPL.")
+                    }
+                    Ok(CheckSame(_, ty, e1, e2)) => {
+                        let do_check_same = || -> anyhow::Result<()> {
+                            let e1 = transform_expression(&e1)?;
+                            let e2 = transform_expression(&e2)?;
+                            let ty = transform_expression(&ty)?;
+                            let (_, ty_o) = tc::resolve_type(&ty, env)?;
+                            let e1_o = tc::synthesize_with_type(&e1, &ty_o, env)?;
+                            let e2_o = tc::synthesize_with_type(&e2, &ty_o, env)?;
+                            tc::expr_check_same(&e1_o, &e2_o, &ty, env)?;
+                            Ok(())
+                        };
+                        match do_check_same() {
+                            Ok(()) => {}
+                            Err(err) => eprintln!("Error: {:?}", err),
+                        }
+                    }
+                    Err(err) => {
+                        println!("Error: {}", err);
                     }
                 }
             }

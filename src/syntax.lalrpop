@@ -14,6 +14,7 @@ match {
     "]",
     "claim",
     "define",
+    "check-same",
     "quote",
     r"Π|Pi|∏" => PI,
     r"Σ|Sigma" => SIGMA,
@@ -39,6 +40,10 @@ pub GlobalStatemant: GlobalStatemant = {
     <l:@L> <e:Enclosed<("define" <Symbol> <Expr>)>> <r:@R> => {
         let (ident, sexpr) = e;
         GlobalStatemant::Define(Span(l, r), ident, sexpr)
+    },
+    <l:@L> <e:Enclosed<("check-same" <Expr> <Expr> <Expr>)>> <r:@R> => {
+        let (ty, e1, e2) = e;
+        GlobalStatemant::CheckSame(Span(l, r), ty, e1, e2)
     },
     Expr => GlobalStatemant::Expression(<>),
 }

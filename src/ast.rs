@@ -9,6 +9,9 @@ pub enum GlobalStatemant {
     /// `(define varname expression)`
     Define(Span, Symbol, Expr),
 
+    /// `(check-same type expression expression)`
+    CheckSame(Span, Expr, Expr, Expr),
+
     /// 表达式
     Expression(Expr),
 }
