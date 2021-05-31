@@ -605,7 +605,9 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
                         bapp!(bf.clone(), t_o, m_o.as_ref().clone(), b_o),
                     )
                 }
-                _ => unreachable!(),
+                _ => throw!(ErrorKind::CannotInferType {
+                    expr: format!("{}", dpp(e, env))
+                }),
             }
         }
         _ => throw!(ErrorKind::CannotInferType {
