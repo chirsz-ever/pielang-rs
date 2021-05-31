@@ -23,7 +23,7 @@ impl fmt::Display for ErrorKind {
         use ErrorKind::*;
         match self {
             TypeNotMatch { expected, given } => {
-                write!(f, "expect a {}, but get `{}`", expected, given)
+                write!(f, "expect a `{}`, but get `{}`", expected, given)
             }
             CannotInferType { expr } => {
                 write!(f, "cannot infer the type of `{}`", expr)
@@ -177,7 +177,11 @@ fn env_get_nth_type(env: &Env, n: usize) -> &Type<!> {
 #[throws]
 fn switch_rule<M: fmt::Display>(e: &Expr<M>, ty: &Type<!>, env: &Env) -> Expr<!> {
     let (ty_e_o, e_o) = synthesize(e, env)?;
-    type_check_same(&ty_e_o, &ty, env)?;
+    // TODO: 改为 context
+    type_check_same(&ty_e_o, &ty, env).map_err(|_| ErrorKind::TypeNotMatch {
+        expected: dpp(ty, env).to_string(),
+        given: dpp(&ty_e_o, env).to_string(),
+    })?;
     e_o
 }
 
