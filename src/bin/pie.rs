@@ -61,7 +61,7 @@ fn main() {
             let (ty, _) = tc::synthesize(&e_dbi, &env)?;
             println!("{}: {}", e, dpp(&ty, &env));
         } else {
-            todo!()
+            todo!("Implement evaluation of expressions from command line arguments");
         }
     }
 
@@ -105,7 +105,7 @@ fn interpret_file(input: &mut dyn Read, _check_type_only: bool, _env: &mut Env) 
                 println!("{:?}", e);
             }
             CheckSame(_, _, _, _) => {
-                todo!()
+                todo!("Implement check-same in file interpretation");
             }
         }
     }
@@ -142,7 +142,7 @@ fn repl(check_type_only: bool, env: &Env) {
                             if check_type_only {
                                 println!("{}: {}", dpp(&e, &env), dpp(&ty, &env));
                             } else {
-                                todo!()
+                                todo!("Implement evaluation of expressions in REPL");
                             }
                             Ok(())
                         };
