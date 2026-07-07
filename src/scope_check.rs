@@ -1,7 +1,6 @@
-use crate::{ast, core_ast, utils};
-use ast::Literal;
-use core_ast::{Argument, Expr, Type};
-use fehler::{throw, throws};
+use crate::{core_ast, utils};
+use core_ast::{Argument, Expr};
+use fehler::throws;
 use std::fmt;
 use utils::{map_result, LocatedError, Ref, DBI};
 
@@ -30,7 +29,7 @@ impl fmt::Display for ErrorKind {
 pub fn to_dbi<M, 'a>(expr: &Expr<M, Ref<str>>, env: &Env<'a>) -> Expr<M, DBI> {
     use Expr::*;
     match expr {
-        Info(info, expr_inner) => to_dbi(expr_inner, env)?,
+        Info(_info, expr_inner) => to_dbi(expr_inner, env)?,
         Literal(lit) => Literal(lit.clone()),
         Identifier(ident) => Identifier(find_index(ident, env)?),
         LambdaExpr(arg, body) => {

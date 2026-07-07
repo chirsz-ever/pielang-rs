@@ -3,8 +3,7 @@ use ast::Literal;
 use core_ast::{builtin_type as bty, Argument, DBIPPrint as dpp, Expr, Type, ULevel};
 use fehler::{throw, throws};
 use std::fmt;
-use thiserror::Error;
-use utils::{LocatedError, Ref, Span, DBI};
+use utils::{LocatedError, Ref};
 
 // TODO: 改进打印方式，将这里改成 StackMap<Option<Ref<str>>, Type<Never>>
 pub type Env = crate::utils::StackMap<Option<Ref<str>>, Option<Type<Never>>>;
@@ -37,9 +36,9 @@ impl fmt::Display for ErrorKind {
 
 macro_rules! try_match {
     (let BuiltinApply($bf:literal , [$($i:ident),+ $(,)?]) = $e:expr; $env:expr) => {
-        let ($($i),+) = if let BuiltinApply(ref bf, ref args) = $e {
+        let ($($i,)+) = if let BuiltinApply(ref bf, ref args) = $e {
             if let ($bf, [$($i),+]) = (&**bf, &**args) {
-                ($($i),+)
+                ($($i,)+)
             } else {
                 throw!(ErrorKind::TypeNotMatch {
                     expected: format!($bf),
@@ -190,7 +189,11 @@ fn switch_rule<M: fmt::Display>(e: &Expr<M>, ty: &Type<Never>, env: &Env) -> Exp
 /// 对于构造式，有唯一相关的类型与之匹配；
 /// 其它表达式则应用 Which 规则：试图综合得出其类型，再将结果与所给类型比较。
 #[throws]
-pub fn synthesize_with_type<M: fmt::Display>(e: &Expr<M>, ty: &Type<Never>, env: &Env) -> Expr<Never> {
+pub fn synthesize_with_type<M: fmt::Display>(
+    e: &Expr<M>,
+    ty: &Type<Never>,
+    env: &Env,
+) -> Expr<Never> {
     use Expr::*;
     log::trace!("check {} is a {}", dpp(e, env), dpp(ty, env));
     if let Info(_, e) = e {
@@ -312,8 +315,8 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
             let ty = env_get_nth_type(env, *ident).clone();
             (ty, Identifier(ident.clone()))
         }
-        PiExpr(arg, ty_a, ty_r) => resolve_type_rule(ty_a, env)?,
-        SigmaExpr(arg, ty_a, ty_d) => resolve_type_rule(ty_a, env)?,
+        PiExpr(_arg, ty_a, _ty_r) => resolve_type_rule(ty_a, env)?,
+        SigmaExpr(_arg, ty_a, _ty_d) => resolve_type_rule(ty_a, env)?,
         // FunE-1
         Apply(f, arg) => {
             let (ty_f, f_o) = synthesize(f, env)?;
@@ -383,7 +386,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
                 // SigmaE-1
                 ("car", [pr]) => {
                     let (ty_pr, pr_o) = synthesize(pr, env)?;
-                    try_match! { let SigmaExpr(_x, ty_a, ty_d) = &ty_pr; env };
+                    try_match! { let SigmaExpr(_x, ty_a, _ty_d) = &ty_pr; env };
                     (Expr::clone(ty_a), BuiltinApply(bf.clone(), vec![pr_o]))
                 }
                 // SigmaE-2
@@ -393,7 +396,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
                     // FIXME: 在此需要编译期计算
                     let car_pr = bapp!("car", pr_o.clone());
                     // FIXME!
-                    let ty_d_o = substitute(ty_d, "", &car_pr, env);
+                    let _ty_d_o = substitute(ty_d, "", &car_pr, env);
                     (Expr::clone(ty_a), BuiltinApply(bf.clone(), vec![pr_o]))
                 }
                 // NatE-1
@@ -541,7 +544,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
                     (m_o.clone(), BuiltinApply(bf.clone(), vec![t_o, m_o]))
                 }
                 // EqE-1
-                ("replace", [t, m, b]) => {
+                ("replace", [t, _m, b]) => {
                     let (ty_t, t_o) = synthesize(t, env)?;
                     try_match! { let BuiltinApply("=", [ty_x, from, to]) = &ty_t; env }
                     let m_o = pi!(ty_x.clone(), U(0));
@@ -705,7 +708,6 @@ fn resolve_type_rule<M: fmt::Display>(ty: &Expr<M>, env: &Env) -> (Type<Never>, 
 #[inline]
 #[throws]
 fn type_check_same(ty1: &Type<Never>, ty2: &Type<Never>, env: &Env) {
-    use Expr::*;
     if !is_type_check_same(ty1, ty2, env) {
         throw!(ErrorKind::NotSame(
             dpp(ty1, env).to_string(),
@@ -768,7 +770,7 @@ fn is_expr_check_same(c1: &Expr<Never>, c2: &Expr<Never>, ct: &Type<Never>, env:
         (BuiltinApply(f, args), Literal(ast::Literal::Nat(n)))
         | (Literal(ast::Literal::Nat(n)), BuiltinApply(f, args)) => match (&**f, &**args, n) {
             ("zero", _, 0) => true,
-            ("zero", _, n) => false,
+            ("zero", _, _) => false,
             ("add1", [_], 0) => false,
             ("add1", [p], n) => is_expr_check_same(p, &Literal(ast::Literal::Nat(n - 1)), ct, env),
             _ => unreachable!(),

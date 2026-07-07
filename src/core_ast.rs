@@ -3,7 +3,6 @@ use crate::utils::*;
 use crate::Never;
 use fehler::{throw, throws};
 use std::fmt;
-use thiserror::Error;
 
 macro_rules! claim_array {
     ($id:ident $name:ident: [$ty: ty; _] = $value:expr $(;)?) => {
@@ -382,7 +381,7 @@ fn unfold_list(exprs: &[ast::Expr]) -> Expr<Never, Ref<str>> {
 
 /// 通过内建函数名获取其应有的参数数量，如果传入的不是内建函数名，返回 `None`。
 fn get_builtin_argument_number(fname: &str) -> Option<usize> {
-    for (bf, n) in std::array::IntoIter::new(PIE_BUILTIN_FUNCTIONS) {
+    for (bf, n) in PIE_BUILTIN_FUNCTIONS {
         if bf == fname {
             return Some(n);
         }
