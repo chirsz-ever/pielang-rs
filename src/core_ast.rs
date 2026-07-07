@@ -1,5 +1,6 @@
 use crate::ast;
 use crate::utils::*;
+use crate::Never;
 use fehler::{throw, throws};
 use std::fmt;
 use thiserror::Error;
@@ -281,7 +282,7 @@ impl fmt::Display for Argument {
 /// 调用分别转化为函数调用和内建调用，并检查内建调用的合法性，将标识符 U 转换为
 /// core_ast::Expr::U。
 #[throws]
-pub fn unfold(e: &ast::Expr) -> Expr<!, Ref<str>> {
+pub fn unfold(e: &ast::Expr) -> Expr<Never, Ref<str>> {
     use ast::Expr::*;
     match e {
         Literal(_, lit) => Expr::Literal(lit.clone()),
@@ -370,7 +371,7 @@ pub fn unfold(e: &ast::Expr) -> Expr<!, Ref<str>> {
 
 /// 将列表经过柯里化转换为函数调用
 #[throws]
-fn unfold_list(exprs: &[ast::Expr]) -> Expr<!, Ref<str>> {
+fn unfold_list(exprs: &[ast::Expr]) -> Expr<Never, Ref<str>> {
     let mut es = exprs.iter();
     let mut f = unfold(es.next().unwrap())?;
     for e in es {
@@ -456,12 +457,12 @@ pub mod builtin_type {
         ($(($tynm:ident, $tyf:ident)),+ $(,)?) => {
             thread_local! {
                 $(
-                static $tynm: Expr<!> = Expr::BuiltinApply(stringify!($tynm).into(), vec![]);
+                static $tynm: Expr<Never> = Expr::BuiltinApply(stringify!($tynm).into(), vec![]);
                 )+
             }
             $(
                 #[inline]
-                pub fn $tyf() -> Expr<!> {
+                pub fn $tyf() -> Expr<Never> {
                     $tynm.with(Clone::clone)
                 }
             )+
@@ -477,7 +478,7 @@ pub mod builtin_type {
             }
             $(
                 #[inline]
-                pub fn $tyf($($arg: Expr<!>),+) -> Expr<!> {
+                pub fn $tyf($($arg: Expr<Never>),+) -> Expr<Never> {
                     Expr::BuiltinApply($tynm.with(Clone::clone), vec![$($arg),+])
                 }
             )+
@@ -503,7 +504,7 @@ pub mod builtin_type {
     }
 
     #[inline]
-    pub fn equal(t: Expr<!>, l: Expr<!>, r: Expr<!>) -> Expr<!> {
+    pub fn equal(t: Expr<Never>, l: Expr<Never>, r: Expr<Never>) -> Expr<Never> {
         Expr::BuiltinApply(Equal.with(Clone::clone), vec![t, l, r])
     }
 }

@@ -1,5 +1,3 @@
-#![feature(never_type)]
-
 use anyhow::Context as _;
 use core_ast::DBIPPrint as dpp;
 use fehler::throws;
@@ -74,7 +72,7 @@ fn main() {
 
 /// 从简单语法树到核心语法树
 #[throws]
-fn transform_expression(expr: &ast::Expr) -> core_ast::Expr<!> {
+fn transform_expression(expr: &ast::Expr) -> core_ast::Expr<Never> {
     let unfold_expr = core_ast::unfold(expr)?;
     scope_check::to_dbi(&unfold_expr, &scope_check::default_environment())?
 }

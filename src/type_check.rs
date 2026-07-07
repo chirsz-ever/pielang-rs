@@ -1,4 +1,4 @@
-use crate::{ast, core_ast, utils};
+use crate::{ast, core_ast, utils, Never};
 use ast::Literal;
 use core_ast::{builtin_type as bty, Argument, DBIPPrint as dpp, Expr, Type, ULevel};
 use fehler::{throw, throws};
@@ -6,8 +6,8 @@ use std::fmt;
 use thiserror::Error;
 use utils::{LocatedError, Ref, Span, DBI};
 
-// TODO: 改进打印方式，将这里改成 StackMap<Option<Ref<str>>, Type<!>>
-pub type Env = crate::utils::StackMap<Option<Ref<str>>, Option<Type<!>>>;
+// TODO: 改进打印方式，将这里改成 StackMap<Option<Ref<str>>, Type<Never>>
+pub type Env = crate::utils::StackMap<Option<Ref<str>>, Option<Type<Never>>>;
 
 type Error = LocatedError<ErrorKind>;
 
@@ -144,7 +144,7 @@ macro_rules! bapp {
 // TODO: 使用 De Bruijn 方法解决变量名、作用域的各种问题
 
 /// 执行 expr[var/e]，将 expr 中自由出现的 var 替换为 e，e 应当是没有自由变量的。
-fn substitute(expr: &Expr<!>, var: &str, e: &Expr<!>, env: &Env) -> Expr<!> {
+fn substitute(expr: &Expr<Never>, var: &str, e: &Expr<Never>, env: &Env) -> Expr<Never> {
     log::trace!(
         "substitute {:?} to {} in {}",
         var,
@@ -156,7 +156,7 @@ fn substitute(expr: &Expr<!>, var: &str, e: &Expr<!>, env: &Env) -> Expr<!> {
 
 /// 对常用的 Argument 模式的简写
 #[inline]
-fn substitute_arg(expr: &Expr<!>, arg: &Argument, e: &Expr<!>, env: &Env) -> Expr<!> {
+fn substitute_arg(expr: &Expr<Never>, arg: &Argument, e: &Expr<Never>, env: &Env) -> Expr<Never> {
     match arg {
         Argument::Symbol(sym) => substitute(expr, sym, e, env),
         Argument::Dummy => expr.clone(),
@@ -164,18 +164,18 @@ fn substitute_arg(expr: &Expr<!>, arg: &Argument, e: &Expr<!>, env: &Env) -> Exp
 }
 
 #[inline]
-fn env_ext(env: &Env, name: Option<Ref<str>>, ty: &Type<!>) -> Env {
+fn env_ext(env: &Env, name: Option<Ref<str>>, ty: &Type<Never>) -> Env {
     env.insert(name, Some(ty.clone()))
 }
 
-fn env_get_nth_type(env: &Env, n: usize) -> &Type<!> {
+fn env_get_nth_type(env: &Env, n: usize) -> &Type<Never> {
     // 经过作用域检查，保证不会 panic
     env.iter().nth(n).and_then(|(_, ty)| ty.as_ref()).unwrap()
 }
 
 #[inline]
 #[throws]
-fn switch_rule<M: fmt::Display>(e: &Expr<M>, ty: &Type<!>, env: &Env) -> Expr<!> {
+fn switch_rule<M: fmt::Display>(e: &Expr<M>, ty: &Type<Never>, env: &Env) -> Expr<Never> {
     let (ty_e_o, e_o) = synthesize(e, env)?;
     // TODO: 改为 context
     type_check_same(&ty_e_o, &ty, env).map_err(|_| ErrorKind::TypeNotMatch {
@@ -190,7 +190,7 @@ fn switch_rule<M: fmt::Display>(e: &Expr<M>, ty: &Type<!>, env: &Env) -> Expr<!>
 /// 对于构造式，有唯一相关的类型与之匹配；
 /// 其它表达式则应用 Which 规则：试图综合得出其类型，再将结果与所给类型比较。
 #[throws]
-pub fn synthesize_with_type<M: fmt::Display>(e: &Expr<M>, ty: &Type<!>, env: &Env) -> Expr<!> {
+pub fn synthesize_with_type<M: fmt::Display>(e: &Expr<M>, ty: &Type<Never>, env: &Env) -> Expr<Never> {
     use Expr::*;
     log::trace!("check {} is a {}", dpp(e, env), dpp(ty, env));
     if let Info(_, e) = e {
@@ -286,7 +286,7 @@ fn is_literal_add1<M>(e: &Expr<M>) -> bool {
     }
 }
 
-fn literal_sub1(e: &Expr<!>) -> Expr<!> {
+fn literal_sub1(e: &Expr<Never>) -> Expr<Never> {
     use Expr::*;
     match e {
         Literal(ast::Literal::Nat(n)) => Literal(ast::Literal::Nat(n - 1)),
@@ -301,7 +301,7 @@ fn literal_sub1(e: &Expr<!>) -> Expr<!> {
 /// 对表达式 `e` 进行类型检查，返回检查结果。
 /// 第七种 Judgement，见 Figure B.1。
 #[throws]
-pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>) {
+pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr<Never>) {
     use Expr::*;
     log::trace!("synthesize {}", dpp(e, env));
     match e {
@@ -623,7 +623,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<!>, Expr<!>)
 /// 判断并计算表达式是一个类型或 U(n)，返回其类型层级，相当于为 U(n) 特化的 synthesize。
 /// 改进的第四种 Judgement，见 Figure B.1。
 #[throws]
-pub fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (ULevel, Type<!>) {
+pub fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (ULevel, Type<Never>) {
     use Expr::*;
     log::trace!("resolve {0} is a type", dpp(e, env));
     // TODO: 改进 El 规则
@@ -695,7 +695,7 @@ pub fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (ULevel, Type<!>
 // 将 resolve_type 的返回值包装为 (U(n), t_o)
 #[inline]
 #[throws]
-fn resolve_type_rule<M: fmt::Display>(ty: &Expr<M>, env: &Env) -> (Type<!>, Type<!>) {
+fn resolve_type_rule<M: fmt::Display>(ty: &Expr<M>, env: &Env) -> (Type<Never>, Type<Never>) {
     let (l, t_o) = resolve_type(ty, env)?;
     (Expr::U(l), t_o)
 }
@@ -704,7 +704,7 @@ fn resolve_type_rule<M: fmt::Display>(ty: &Expr<M>, env: &Env) -> (Type<!>, Type
 /// 第五种 Judgement，见 Figure B.1。
 #[inline]
 #[throws]
-fn type_check_same(ty1: &Type<!>, ty2: &Type<!>, env: &Env) {
+fn type_check_same(ty1: &Type<Never>, ty2: &Type<Never>, env: &Env) {
     use Expr::*;
     if !is_type_check_same(ty1, ty2, env) {
         throw!(ErrorKind::NotSame(
@@ -715,7 +715,7 @@ fn type_check_same(ty1: &Type<!>, ty2: &Type<!>, env: &Env) {
     }
 }
 
-fn is_type_check_same(ty1: &Type<!>, ty2: &Type<!>, env: &Env) -> bool {
+fn is_type_check_same(ty1: &Type<Never>, ty2: &Type<Never>, env: &Env) -> bool {
     use Expr::*;
     log::trace!(
         "check `{}` and `{}` are the same type",
@@ -741,7 +741,7 @@ fn is_type_check_same(ty1: &Type<!>, ty2: &Type<!>, env: &Env) -> bool {
 /// 认为 `c1: ct` 与 `c2: ct` 已满足
 /// 第八种 Judgement，见 Figure B.1。
 #[throws]
-pub fn expr_check_same(c1: &Expr<!>, c2: &Expr<!>, ct: &Type<!>, env: &Env) {
+pub fn expr_check_same(c1: &Expr<Never>, c2: &Expr<Never>, ct: &Type<Never>, env: &Env) {
     if !is_expr_check_same(c1, c2, ct, env) {
         throw!(ErrorKind::NotSame(
             dpp(c1, env).to_string(),
@@ -751,7 +751,7 @@ pub fn expr_check_same(c1: &Expr<!>, c2: &Expr<!>, ct: &Type<!>, env: &Env) {
     }
 }
 
-fn is_expr_check_same(c1: &Expr<!>, c2: &Expr<!>, ct: &Type<!>, env: &Env) -> bool {
+fn is_expr_check_same(c1: &Expr<Never>, c2: &Expr<Never>, ct: &Type<Never>, env: &Env) -> bool {
     use Expr::*;
     log::trace!(
         "check `{}` and `{}` are the same `{}`",
@@ -787,7 +787,7 @@ fn is_expr_check_same(c1: &Expr<!>, c2: &Expr<!>, ct: &Type<!>, env: &Env) -> bo
 }
 
 /// 直接从字面量推导类型
-fn synthesize_literal(lit: &Literal) -> (Type<!>, Expr<!>) {
+fn synthesize_literal(lit: &Literal) -> (Type<Never>, Expr<Never>) {
     let ty = match lit {
         Literal::Nat(_) => bty::nat(),
         Literal::Atom(_) => bty::atom(),

@@ -4,9 +4,11 @@
 // TODO: 处理 TODO
 // TODO: 实现 check-same
 
-#![feature(never_type)]
-
 use lalrpop_util::lalrpop_mod;
+
+/// Stable-compatible stand-in for the never type `!`.
+/// Used as a phantom type parameter where no meta-info is needed.
+pub type Never = std::convert::Infallible;
 
 lalrpop_mod!(#[allow(clippy::all)] pub syntax);
 
