@@ -58,8 +58,8 @@ fn main() {
         let expr = parser.parse(e).map_err(|err| anyhow::anyhow!("{}", err))?;
         let e_dbi = transform_expression(&expr)?;
         if opt.check_type_only {
-            let (ty, _) = tc::synthesize(&e_dbi, &env)?;
-            println!("{}: {}", e, dpp(&ty, &env));
+            let (ty, e_o) = tc::synthesize(&e_dbi, &env)?;
+            println!("(the {} {})", dpp(&ty, &env), dpp(&e_o, &env));
         } else {
             todo!("Implement evaluation of expressions from command line arguments");
         }
@@ -137,10 +137,10 @@ fn repl(check_type_only: bool, env: &Env) {
                     Ok(Expression(expr)) => {
                         let do_expr = || -> anyhow::Result<()> {
                             let e = transform_expression(&expr)?;
-                            let (ty, _e_o) =
+                            let (ty, e_o) =
                                 tc::synthesize(&e, &env).context("Can't determine a type")?;
                             if check_type_only {
-                                println!("{}: {}", dpp(&e, &env), dpp(&ty, &env));
+                                println!("(the {} {})", dpp(&ty, &env), dpp(&e_o, &env));
                             } else {
                                 todo!("Implement evaluation of expressions in REPL");
                             }
