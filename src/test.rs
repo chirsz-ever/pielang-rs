@@ -154,3 +154,25 @@ n
     parser.parse(leibniz).expect(r#"work code "Leibniz""#);
     parser.parse(bracket).expect("bracket test");
 }
+
+#[test]
+fn parse_expression() {
+    let parser = crate::syntax::ExprParser::new();
+    let exprs = [
+        "0",
+        "1",
+        "9876",
+        "'a",
+        "n",
+        "(lambda (x) x)",
+        "(the (= Nat 0 0) sole)",
+        "(Sigma ((x Nat)(y Nat)) (= Nat x y))",
+        // "'this-is-a-symbol",
+    ];
+    for e in exprs {
+        insta::assert_debug_snapshot!(
+            format!("parse_expression_{}", e),
+            parser.parse(e).expect("parse expression")
+        );
+    }
+}

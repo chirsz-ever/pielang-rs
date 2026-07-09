@@ -1,0 +1,66 @@
+---
+source: src/test.rs
+expression: "parser.parse(e).expect(\"parse expression\")"
+---
+List(
+    Span(
+        0,
+        22,
+    ),
+    [
+        Identifier(
+            Span(
+                1,
+                4,
+            ),
+            "the",
+        ),
+        List(
+            Span(
+                5,
+                16,
+            ),
+            [
+                Identifier(
+                    Span(
+                        6,
+                        7,
+                    ),
+                    "=",
+                ),
+                Identifier(
+                    Span(
+                        8,
+                        11,
+                    ),
+                    "Nat",
+                ),
+                Literal(
+                    Span(
+                        12,
+                        13,
+                    ),
+                    Nat(
+                        0,
+                    ),
+                ),
+                Literal(
+                    Span(
+                        14,
+                        15,
+                    ),
+                    Nat(
+                        0,
+                    ),
+                ),
+            ],
+        ),
+        Identifier(
+            Span(
+                17,
+                21,
+            ),
+            "sole",
+        ),
+    ],
+)
