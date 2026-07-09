@@ -1,13 +1,16 @@
 ---
 source: src/test.rs
-expression: "parser.parse(e).expect(\"parse expression\")"
+description: "1"
+expression: parser.parse(e)
 ---
-Literal(
-    Span(
-        0,
-        1,
-    ),
-    Nat(
-        1,
+Ok(
+    Literal(
+        Span(
+            0,
+            1,
+        ),
+        Nat(
+            1,
+        ),
     ),
 )

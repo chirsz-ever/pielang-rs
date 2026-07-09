@@ -4,6 +4,7 @@ use crate::utils::{Ref, Span};
 grammar;
 
 // 词法解析器
+// 实际上 Pie 中除了 claim define check-same 之外全都是关键字，这里的操作有所不同
 match {
     r"\s*" => { }, // 空白
     r";[^\n\r]*[\n\r]*" => { }, // 注释
@@ -12,6 +13,8 @@ match {
     ")",
     "[",
     "]",
+    "{",
+    "}",
     "claim",
     "define",
     "check-same",
@@ -21,14 +24,20 @@ match {
     r"λ|lambda" => LAMBDA,
     r"→|->" => FARROW,
     r"0|[1-9][0-9]*" => NatLit,
-    r"'[\w--\d]\w*" => AtomLit,
+    // Pie 的 Atom 由字母或者横线组成
+    // 由于 LALRPOP 的限制，无法使 ' 或者 quote 后的标识符采用单独的词法规则，只能作为整体的 token 来匹配
+    // TODO: 更好的方式: { "'" <AtomIdent> => ..., Enclosed<("quote" <AtomIdent>)> => ... }
+    r"'\s*[-\w--\d]+" => AtomLit,
+    r"quote\s*[-\w--\d]+" => QuoteAtomLit,
 } else {
-    // 不可用于标识符的字符：()[]{}"'`,#\|;
+    // https://docs.racket-lang.org/reference/reader.html#%28tech._delimiter%29
+    // 不可用于标识符的字符：()[]{}",'`;#\|
     // 首字符可以是数字，如 0≠1
+    // TODO: 禁止 -1 这种在 Racket 中是数字字面量，在 Pie 中非法的标识符
     r#"[\S--[()\[\]{}"'`,#\\|;]]+"# => Ident,
 }
 
-Enclosed<T> = { "(" <T> ")", "[" <T> "]" }
+Enclosed<T> = { "(" <T> ")", "[" <T> "]", "{" <T> "}" }
 
 pub Grammer = HeaderComment* <GlobalStatemant*>;
 
@@ -98,10 +107,18 @@ Literal: Literal = {
     },
     // 'atom
     AtomLit => {
-        Literal::Atom((<>)[1..].into())
+        regex::Regex::new(r"'\s*([-\w--\d]+)").unwrap()
+            .captures(&<>)
+            .map(|cap| cap.get(1).unwrap().as_str().into())
+            .map(Literal::Atom)
+            .unwrap()
     },
     // (quote atom)
-    Enclosed<("quote" <Ident>)> => {
-        Literal::Atom(<>.into())
+    Enclosed<(<QuoteAtomLit>)> => {
+        regex::Regex::new(r"quote\s*([-\w--\d-])").unwrap()
+            .captures(&<>)
+            .map(|cap| cap.get(1).unwrap().as_str().into())
+            .map(Literal::Atom)
+            .unwrap()
     }
 }

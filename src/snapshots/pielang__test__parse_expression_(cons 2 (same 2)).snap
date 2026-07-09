@@ -1,0 +1,55 @@
+---
+source: src/test.rs
+description: (cons 2 (same 2))
+expression: parser.parse(e)
+---
+Ok(
+    List(
+        Span(
+            0,
+            17,
+        ),
+        [
+            Identifier(
+                Span(
+                    1,
+                    5,
+                ),
+                "cons",
+            ),
+            Literal(
+                Span(
+                    6,
+                    7,
+                ),
+                Nat(
+                    2,
+                ),
+            ),
+            List(
+                Span(
+                    8,
+                    16,
+                ),
+                [
+                    Identifier(
+                        Span(
+                            9,
+                            13,
+                        ),
+                        "same",
+                    ),
+                    Literal(
+                        Span(
+                            14,
+                            15,
+                        ),
+                        Nat(
+                            2,
+                        ),
+                    ),
+                ],
+            ),
+        ],
+    ),
+)

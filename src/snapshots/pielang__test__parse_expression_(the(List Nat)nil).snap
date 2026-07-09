@@ -1,0 +1,51 @@
+---
+source: src/test.rs
+description: (the(List Nat)nil)
+expression: parser.parse(e)
+---
+Ok(
+    List(
+        Span(
+            0,
+            18,
+        ),
+        [
+            Identifier(
+                Span(
+                    1,
+                    4,
+                ),
+                "the",
+            ),
+            List(
+                Span(
+                    4,
+                    14,
+                ),
+                [
+                    Identifier(
+                        Span(
+                            5,
+                            9,
+                        ),
+                        "List",
+                    ),
+                    Identifier(
+                        Span(
+                            10,
+                            13,
+                        ),
+                        "Nat",
+                    ),
+                ],
+            ),
+            Identifier(
+                Span(
+                    14,
+                    17,
+                ),
+                "nil",
+            ),
+        ],
+    ),
+)

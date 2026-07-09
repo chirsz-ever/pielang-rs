@@ -1,16 +1,16 @@
 ---
 source: src/test.rs
-description: "0"
+description: (quote ctom)
 expression: parser.parse(e)
 ---
 Ok(
     Literal(
         Span(
             0,
-            1,
+            12,
         ),
-        Nat(
-            0,
+        Atom(
+            "c",
         ),
     ),
 )

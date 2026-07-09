@@ -1,16 +1,16 @@
 ---
 source: src/test.rs
-description: "0"
+description: "'this-is-a-symbol"
 expression: parser.parse(e)
 ---
 Ok(
     Literal(
         Span(
             0,
-            1,
+            17,
         ),
-        Nat(
-            0,
+        Atom(
+            "this-is-a-symbol",
         ),
     ),
 )

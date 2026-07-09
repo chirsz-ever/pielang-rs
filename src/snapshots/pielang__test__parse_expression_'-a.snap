@@ -1,16 +1,16 @@
 ---
 source: src/test.rs
-description: "0"
+description: "'-a"
 expression: parser.parse(e)
 ---
 Ok(
     Literal(
         Span(
             0,
-            1,
+            3,
         ),
-        Nat(
-            0,
+        Atom(
+            "-a",
         ),
     ),
 )

@@ -1,0 +1,38 @@
+---
+source: src/test.rs
+description: "[the Nat 1]"
+expression: parser.parse(e)
+---
+Ok(
+    List(
+        Span(
+            0,
+            11,
+        ),
+        [
+            Identifier(
+                Span(
+                    1,
+                    4,
+                ),
+                "the",
+            ),
+            Identifier(
+                Span(
+                    5,
+                    8,
+                ),
+                "Nat",
+            ),
+            Literal(
+                Span(
+                    9,
+                    10,
+                ),
+                Nat(
+                    1,
+                ),
+            ),
+        ],
+    ),
+)

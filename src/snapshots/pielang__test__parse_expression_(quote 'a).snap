@@ -1,0 +1,30 @@
+---
+source: src/test.rs
+description: "(quote 'a)"
+expression: parser.parse(e)
+---
+Err(
+    UnrecognizedToken {
+        token: (
+            1,
+            Token(
+                18,
+                "quote",
+            ),
+            6,
+        ),
+        expected: [
+            "Ident",
+            "AtomLit",
+            "NatLit",
+            "QuoteAtomLit",
+            "PI",
+            "SIGMA",
+            "LAMBDA",
+            "FARROW",
+            "\"(\"",
+            "\"[\"",
+            "\"{\"",
+        ],
+    },
+)

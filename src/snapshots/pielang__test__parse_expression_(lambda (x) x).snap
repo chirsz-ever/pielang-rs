@@ -1,26 +1,29 @@
 ---
 source: src/test.rs
-expression: "parser.parse(e).expect(\"parse expression\")"
+description: (lambda (x) x)
+expression: parser.parse(e)
 ---
-LambdaExpr(
-    Span(
-        0,
-        14,
-    ),
-    [
-        Symbol(
+Ok(
+    LambdaExpr(
+        Span(
+            0,
+            14,
+        ),
+        [
+            Symbol(
+                Span(
+                    9,
+                    10,
+                ),
+                "x",
+            ),
+        ],
+        Identifier(
             Span(
-                9,
-                10,
+                12,
+                13,
             ),
             "x",
         ),
-    ],
-    Identifier(
-        Span(
-            12,
-            13,
-        ),
-        "x",
     ),
 )

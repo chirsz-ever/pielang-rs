@@ -1,16 +1,14 @@
 ---
 source: src/test.rs
-description: "0"
+description: "01"
 expression: parser.parse(e)
 ---
 Ok(
-    Literal(
+    Identifier(
         Span(
             0,
-            1,
+            2,
         ),
-        Nat(
-            0,
-        ),
+        "01",
     ),
 )

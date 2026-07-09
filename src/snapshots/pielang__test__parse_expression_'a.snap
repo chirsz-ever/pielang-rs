@@ -1,13 +1,16 @@
 ---
 source: src/test.rs
-expression: "parser.parse(e).expect(\"parse expression\")"
+description: "'a"
+expression: parser.parse(e)
 ---
-Literal(
-    Span(
-        0,
-        2,
-    ),
-    Atom(
-        "a",
+Ok(
+    Literal(
+        Span(
+            0,
+            2,
+        ),
+        Atom(
+            "a",
+        ),
     ),
 )
