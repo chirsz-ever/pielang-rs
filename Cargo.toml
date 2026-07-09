@@ -11,13 +11,13 @@ categories = ["command-line-utilities", "compilers"]
 # repository = 
 
 [build-dependencies]
-lalrpop = { version = "0.19", features = ["lexer"] }
+lalrpop = "0.23.1"
 
 # TODO: manage binary-only dependencies
 [dependencies]
-lalrpop-util = "0.19"
+lalrpop-util = "0.23.1"
 structopt = "0.3"
-rustyline = "7.1"
+rustyline = "18.0"
 fehler = "1.0"
 anyhow = "1.0"
 thiserror = "1.0"

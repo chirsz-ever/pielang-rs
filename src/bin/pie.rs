@@ -120,9 +120,10 @@ fn should_repl(opt: &Opt) -> bool {
 fn repl(check_type_only: bool, env: &Env) {
     use ast::GlobalStatemant::*;
     use rustyline::error::ReadlineError;
+    use rustyline::history::MemHistory;
     use rustyline::{Cmd, Config, Editor};
     let conf = Config::builder().auto_add_history(true).build();
-    let mut rl = Editor::<()>::with_config(conf);
+    let mut rl = Editor::<(), MemHistory>::with_history(conf, MemHistory::new())?;
     rl.bind_sequence(KeyEvent::ctrl('\\'), Cmd::Insert(1, String::from("λ")));
     let parser = syntax::GlobalStatemantParser::new();
 
