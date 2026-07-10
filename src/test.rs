@@ -71,7 +71,25 @@ fn check_synthesize(expr: &str) -> anyhow::Result<String> {
 
 #[test]
 fn synthesize_tests() -> anyhow::Result<()> {
-    let exprs = ["(the Nat 0)", "(the Atom 'a)", "(the Nat 'a)"];
+    let exprs = [
+        "(the U Nat)",
+        "(the Nat 0)",
+        "(the Nat zero)",
+        "(the Nat (add1 zero))",
+        "(the Nat 114)",
+        "(the Nat 'a)",
+        "(the U Atom)",
+        "(the Atom 'a)",
+        "(the Atom zero)",
+        "(the U Trivial)",
+        "(the Trivial sole)",
+        "(the Trivial 0)",
+        "(the Trivial 'a)",
+        "(the U Absurd)",
+        "(the Absurd 0)",
+        "(the (→ Absurd Nat) (λ (nope) (ind-Absurd nope Nat)))",
+        "(the (→ Absurd Nat) (λ (nope) (ind-Absurd (the Absurd nope) Nat)))"
+    ];
     for s in exprs {
         let output = check_synthesize(s)?;
         insta::with_settings!({

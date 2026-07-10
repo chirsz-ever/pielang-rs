@@ -1,0 +1,7 @@
+---
+source: src/test.rs
+description: (the Nat zero)
+expression: output
+---
+type: Nat
+expr: zero

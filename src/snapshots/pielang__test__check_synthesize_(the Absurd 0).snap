@@ -1,0 +1,6 @@
+---
+source: src/test.rs
+description: (the Absurd 0)
+expression: output
+---
+error: expect a `Absurd`, but get `Nat`

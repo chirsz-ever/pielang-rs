@@ -1,0 +1,6 @@
+---
+source: src/test.rs
+description: (the Trivial 0)
+expression: output
+---
+error: expect a `Trivial`, but get `Nat`

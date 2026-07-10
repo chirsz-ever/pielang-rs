@@ -1,0 +1,7 @@
+---
+source: src/test.rs
+description: (the U Trivial)
+expression: output
+---
+type: U
+expr: Trivial

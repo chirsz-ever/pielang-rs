@@ -1,0 +1,7 @@
+---
+source: src/test.rs
+description: (the Nat 114)
+expression: output
+---
+type: Nat
+expr: 114

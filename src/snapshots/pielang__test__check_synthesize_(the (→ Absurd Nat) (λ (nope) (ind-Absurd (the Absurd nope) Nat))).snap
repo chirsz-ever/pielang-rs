@@ -1,0 +1,7 @@
+---
+source: src/test.rs
+description: (the (→ Absurd Nat) (λ (nope) (ind-Absurd (the Absurd nope) Nat)))
+expression: output
+---
+type: (Π ((x Absurd)) Nat)
+expr: (λ (nope) (ind-Absurd nope Nat))

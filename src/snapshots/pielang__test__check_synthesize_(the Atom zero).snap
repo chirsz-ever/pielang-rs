@@ -1,0 +1,6 @@
+---
+source: src/test.rs
+description: (the Atom zero)
+expression: output
+---
+error: expect a `Atom`, but get `Nat`

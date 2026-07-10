@@ -1,0 +1,6 @@
+---
+source: src/test.rs
+description: "(the Trivial 'a)"
+expression: output
+---
+error: expect a `Trivial`, but get `Atom`
