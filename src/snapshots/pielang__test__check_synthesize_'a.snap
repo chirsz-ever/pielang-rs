@@ -1,0 +1,7 @@
+---
+source: src/test.rs
+description: "'a"
+expression: output
+---
+type: Atom
+expr: 'a

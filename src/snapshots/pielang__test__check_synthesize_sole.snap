@@ -1,0 +1,7 @@
+---
+source: src/test.rs
+description: sole
+expression: output
+---
+type: Trivial
+expr: sole

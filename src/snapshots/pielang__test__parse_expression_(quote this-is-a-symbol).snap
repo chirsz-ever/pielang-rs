@@ -10,7 +10,7 @@ Ok(
             24,
         ),
         Atom(
-            "t",
+            "this-is-a-symbol",
         ),
     ),
 )

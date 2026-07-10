@@ -72,19 +72,29 @@ fn check_synthesize(expr: &str) -> anyhow::Result<String> {
 #[test]
 fn synthesize_tests() -> anyhow::Result<()> {
     let exprs = [
+        // Nat
         "(the U Nat)",
+        "zero",
+        "(add1 zero)",
+        "114",
         "(the Nat 0)",
         "(the Nat zero)",
         "(the Nat (add1 zero))",
         "(the Nat 114)",
         "(the Nat 'a)",
+        // Atom
         "(the U Atom)",
+        "'a",
+        "(quote atom)",
         "(the Atom 'a)",
-        "(the Atom zero)",
+        "(the Atom zero)",        
+        // Trivial
         "(the U Trivial)",
+        "sole",
         "(the Trivial sole)",
         "(the Trivial 0)",
         "(the Trivial 'a)",
+        // Absurd
         "(the U Absurd)",
         "(the Absurd 0)",
         "(the (→ Absurd Nat) (λ (nope) (ind-Absurd nope Nat)))",

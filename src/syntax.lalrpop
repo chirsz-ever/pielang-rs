@@ -115,7 +115,7 @@ Literal: Literal = {
     },
     // (quote atom)
     Enclosed<(<QuoteAtomLit>)> => {
-        regex::Regex::new(r"quote\s*([-\w--\d-])").unwrap()
+        regex::Regex::new(r"quote\s*([-\w--\d]+)").unwrap()
             .captures(&<>)
             .map(|cap| cap.get(1).unwrap().as_str().into())
             .map(Literal::Atom)
