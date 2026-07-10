@@ -12,7 +12,7 @@ macro_rules! claim_array {
 
 // TODO: 嵌入源代码位置信息，定义合适的错误类型
 
-pub type ULevel = u32;
+pub type ULevel = u64;
 
 /// 表达式包含位置信息和元信息（类型等）
 #[derive(Debug, Clone)]
@@ -52,6 +52,7 @@ pub enum Expr<MetaInfo, Variable = DBI> {
     BuiltinApply(Ref<str>, Vec<Expr<MetaInfo, Variable>>),
 
     /// 类型的类型，后面的数字为 Universe Hierarchy 准备，目前统一是 0
+    /// TODO: U(Ref<Self>)
     U(ULevel),
 }
 
@@ -220,6 +221,10 @@ pub enum ErrorKind {
         valid_argc: usize,
         current_argc: usize,
     },
+    IllegalArgumentType {
+        caller: String,
+        valid_argt: String,
+    },
 }
 
 impl fmt::Display for ErrorKind {
@@ -234,6 +239,11 @@ impl fmt::Display for ErrorKind {
                 f,
                 "`{}` should take {} arguments, but here is {} arguments.",
                 caller, valid_argc, current_argc
+            ),
+            IllegalArgumentType { caller, valid_argt } => write!(
+                f,
+                "`{}` should take argument of type {}, but here is not.",
+                caller, valid_argt
             ),
         }
     }
@@ -318,6 +328,16 @@ pub fn unfold(e: &ast::Expr) -> Expr<Never, Ref<str>> {
                         caller: f.to_string(),
                         valid_argc: 2,
                         current_argc: args.len(),
+                    }
+                })
+            }
+            [Identifier(loc, f), Literal(loc1, ast::Literal::Nat(n))] if &**f == "U" => Expr::U(*n),
+            [Identifier(loc, f), args @ ..] if &**f == "U" => {
+                throw!(Error {
+                    loc: Some(loc.clone()),
+                    erk: ErrorKind::IllegalArgumentType {
+                        caller: f.to_string(),
+                        valid_argt: "Nat".to_string(),
                     }
                 })
             }
