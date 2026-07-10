@@ -1,0 +1,7 @@
+---
+source: src/test.rs
+description: "(the Atom 'a)"
+expression: "format!(\"type: {}\\nexpr: {}\\n\", dpp(&ty, &env), dpp(&e_o, &env))"
+---
+type: Atom
+expr: 'a

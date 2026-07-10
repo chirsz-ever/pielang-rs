@@ -6,7 +6,7 @@ RIIR [Pie: A Little Language with Dependent Types](https://github.com/the-little
 
 ## TODO
 
-- [ ] `the` expression
+- [x] `the` expression
 - [ ] Absurd
 - [ ] Trivial
 - [ ] Atoms

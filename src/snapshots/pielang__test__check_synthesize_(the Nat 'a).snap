@@ -1,0 +1,6 @@
+---
+source: src/test.rs
+description: "(the Nat 'a)"
+expression: "format!(\"error: {}\", err)"
+---
+error: expect a `Nat`, but get `Atom`
