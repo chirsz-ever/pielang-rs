@@ -36,7 +36,6 @@ struct Opt {
 fn main() {
     pretty_env_logger::init();
     let opt = Opt::from_args();
-    let parser = syntax::ExprParser::new();
 
     let mut env = Env::new();
 
@@ -54,14 +53,31 @@ fn main() {
         interpret_file(input, opt.check_type_only, &mut env)?;
     }
 
+    let parser = syntax::GlobalStatemantParser::new();
+    use ast::GlobalStatemant::*;
     for e in &opt.exprs {
-        let expr = parser.parse(e).map_err(|err| anyhow::anyhow!("{}", err))?;
-        let e_dbi = transform_expression(&expr)?;
-        if opt.check_type_only {
-            let (ty, e_o) = tc::synthesize(&e_dbi, &env)?;
-            println!("(the {} {})", dpp(&ty, &env), dpp(&e_o, &env));
-        } else {
-            todo!("Implement evaluation of expressions from command line arguments");
+        let stat = parser.parse(e).map_err(|err| anyhow::anyhow!("{}", err))?;
+        match stat {
+            Expression(expr) => {
+                let e_dbi = transform_expression(&expr)?;
+                if opt.check_type_only {
+                    let (ty, e_o) = tc::synthesize(&e_dbi, &env)?;
+                    println!("(the {} {})", dpp(&ty, &env), dpp(&e_o, &env));
+                } else {
+                    todo!("Implement evaluation of expressions from command line arguments");
+                }
+            }
+            CheckSame(_, ty, e1, e2) => {
+                let e1 = transform_expression(&e1)?;
+                let e2 = transform_expression(&e2)?;
+                let ty = transform_expression(&ty)?;
+                let (_, ty_o) = tc::resolve_type(&ty, &env)?;
+                let e1_o = tc::synthesize_with_type(&e1, &ty_o, &env)?;
+                let e2_o = tc::synthesize_with_type(&e2, &ty_o, &env)?;
+                log::trace!("-----");
+                tc::expr_check_same(&e1_o, &e2_o, &ty, &env)?;
+            }
+            _ => todo!("Only `expression` and `check-same` are supported in command line arguments")
         }
     }
 
