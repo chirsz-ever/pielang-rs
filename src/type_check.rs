@@ -2,7 +2,7 @@ use crate::{ast, core_ast, utils, Never};
 use ast::Literal;
 use core_ast::{builtin_type as bty, Argument, DBIPPrint as dpp, Expr, Type, ULevel};
 use fehler::{throw, throws};
-use std::fmt;
+use std::{cell::Cell, fmt};
 use utils::{LocatedError, Ref};
 
 // TODO: 改进打印方式，将这里改成 StackMap<Option<Ref<str>>, Type<Never>>
@@ -140,16 +140,39 @@ macro_rules! bapp {
     };
 }
 
+thread_local! {
+    pub static INDENT: Cell<usize> = const { Cell::new(0) };
+}
+
+/// 缩进守卫，进入时增加缩进，退出时自动恢复
+struct IndentGuard;
+
+impl IndentGuard {
+    fn new() -> Self {
+        INDENT.set(INDENT.get() + 1);
+        IndentGuard
+    }
+}
+
+impl std::ops::Drop for IndentGuard {
+    fn drop(&mut self) {
+        INDENT.set(INDENT.get() - 1);
+    }
+}
+
 // TODO: 使用 De Bruijn 方法解决变量名、作用域的各种问题
 
 /// 执行 expr[var/e]，将 expr 中自由出现的 var 替换为 e，e 应当是没有自由变量的。
 fn substitute(expr: &Expr<Never>, var: &str, e: &Expr<Never>, env: &Env) -> Expr<Never> {
     log::trace!(
-        "substitute {:?} to {} in {}",
+        "{:indent$}substitute `{}` to {} in {}",
+        "",
         var,
         dpp(e, env),
-        dpp(expr, env)
+        dpp(expr, env),
+        indent = INDENT.get(),
     );
+    let _ig = IndentGuard::new();
     todo!()
 }
 
@@ -195,7 +218,14 @@ pub fn synthesize_with_type<M: fmt::Display>(
     env: &Env,
 ) -> Expr<Never> {
     use Expr::*;
-    log::trace!("check {} is a {}", dpp(e, env), dpp(ty, env));
+    log::trace!(
+        "{:indent$}check {} is a {}",
+        "",
+        dpp(e, env),
+        dpp(ty, env),
+        indent = INDENT.get(),
+    );
+    let _ig = IndentGuard::new();
     if let Info(_, e) = e {
         return synthesize_with_type(e, ty, env)?;
     }
@@ -306,7 +336,13 @@ fn literal_sub1(e: &Expr<Never>) -> Expr<Never> {
 #[throws]
 pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr<Never>) {
     use Expr::*;
-    log::trace!("synthesize {}", dpp(e, env));
+    log::trace!(
+        "{:indent$}synthesize {}",
+        "",
+        dpp(e, env),
+        indent = INDENT.get(),
+    );
+    let _ig = IndentGuard::new();
     match e {
         Info(_, e) => synthesize(e, env)?,
         Literal(lit) => synthesize_literal(lit),
@@ -628,7 +664,13 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
 #[throws]
 pub fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (ULevel, Type<Never>) {
     use Expr::*;
-    log::trace!("resolve {0} is a type", dpp(e, env));
+    log::trace!(
+        "{:indent$}resolve {} is a type",
+        "",
+        dpp(e, env),
+        indent = INDENT.get(),
+    );
+    let _ig = IndentGuard::new();
     // TODO: 改进 El 规则
     match e {
         Info(_, e) => resolve_type(e, env)?,
@@ -720,10 +762,13 @@ fn type_check_same(ty1: &Type<Never>, ty2: &Type<Never>, env: &Env) {
 fn is_type_check_same(ty1: &Type<Never>, ty2: &Type<Never>, env: &Env) -> bool {
     use Expr::*;
     log::trace!(
-        "check `{}` and `{}` are the same type",
+        "{:indent$}check `{}` and `{}` are the same type",
+        "",
         dpp(ty1, env),
-        dpp(ty2, env)
+        dpp(ty2, env),
+        indent = INDENT.get(),
     );
+    let _ig = IndentGuard::new();
     // TODO: 比较前充分计算 ty1 和 ty2
     match (ty1, ty2) {
         (Identifier(id1), Identifier(id2)) => id1 == id2,
@@ -756,11 +801,14 @@ pub fn expr_check_same(c1: &Expr<Never>, c2: &Expr<Never>, ct: &Type<Never>, env
 fn is_expr_check_same(c1: &Expr<Never>, c2: &Expr<Never>, ct: &Type<Never>, env: &Env) -> bool {
     use Expr::*;
     log::trace!(
-        "check `{}` and `{}` are the same `{}`",
+        "{:indent$}check `{}` and `{}` are the same `{}`",
+        "",
         dpp(c1, env),
         dpp(c2, env),
         dpp(ct, env),
+        indent = INDENT.get(),
     );
+    let _ig = IndentGuard::new();
     // TODO: 比较前充分计算 c1、c2、ct
     match (c1, c2) {
         (Identifier(id1), Identifier(id2)) => id1 == id2,

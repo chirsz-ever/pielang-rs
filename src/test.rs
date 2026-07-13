@@ -87,7 +87,7 @@ fn synthesize_tests() -> anyhow::Result<()> {
         "'a",
         "(quote atom)",
         "(the Atom 'a)",
-        "(the Atom zero)",        
+        "(the Atom zero)",
         // Trivial
         "(the U Trivial)",
         "sole",
@@ -98,7 +98,7 @@ fn synthesize_tests() -> anyhow::Result<()> {
         "(the U Absurd)",
         "(the Absurd 0)",
         "(the (→ Absurd Nat) (λ (nope) (ind-Absurd nope Nat)))",
-        "(the (→ Absurd Nat) (λ (nope) (ind-Absurd (the Absurd nope) Nat)))"
+        "(the (→ Absurd Nat) (λ (nope) (ind-Absurd (the Absurd nope) Nat)))",
     ];
     for s in exprs {
         let output = check_synthesize(s)?;
