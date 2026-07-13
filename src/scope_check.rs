@@ -30,7 +30,8 @@ pub fn to_dbi<M, 'a>(expr: &Expr<M, Ref<str>>, env: &Env<'a>) -> Expr<M, DBI> {
     use Expr::*;
     match expr {
         Info(_info, expr_inner) => to_dbi(expr_inner, env)?,
-        Literal(lit) => Literal(lit.clone()),
+        NatLiteral(n) => NatLiteral(*n),
+        AtomLiteral(s) => AtomLiteral(s.clone()),
         Identifier(ident) => Identifier(find_index(ident, env)?),
         LambdaExpr(arg, body) => {
             LambdaExpr(arg.clone(), Ref::new(to_dbi(body, &append_arg(env, arg))?))
@@ -46,10 +47,10 @@ pub fn to_dbi<M, 'a>(expr: &Expr<M, Ref<str>>, env: &Env<'a>) -> Expr<M, DBI> {
             Ref::new(to_dbi(body, &append_arg(env, arg))?),
         ),
         Apply(f, arg) => Apply(Ref::new(to_dbi(f, env)?), Ref::new(to_dbi(arg, env)?)),
-        U(n) => U(*n),
         BuiltinApply(bf, args) => {
-            BuiltinApply(bf.clone(), map_result(args.iter(), |arg| to_dbi(arg, env))?)
+            BuiltinApply(bf, map_result(args.iter(), |arg| to_dbi(arg, env))?)
         }
+        BuiltinId(bid) => BuiltinId(bid),
     }
 }
 

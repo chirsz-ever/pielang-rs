@@ -20,40 +20,33 @@ pub enum Expr<MetaInfo, Variable = DBI> {
     /// 用于在抽象代码树中插入信息的中间层。
     Info(MetaInfo, Ref<Expr<MetaInfo, Variable>>),
 
-    /// 字面量
-    Literal(ast::Literal),
+    /// 自然数字面量
+    NatLiteral(u64),
+
+    /// 原子符号字面量
+    AtomLiteral(Ref<str>),
 
     /// 标识符，表示变量、函数、类型等
     Identifier(Variable),
 
     /// `(λ (ident) expr)`，被转换为单层
-    LambdaExpr(Argument, Ref<Expr<MetaInfo, Variable>>),
+    LambdaExpr(Argument, Ref<Self>),
 
     /// `(Π ((ident expr)) expr)`，被转换为单层
     /// 并将箭头表达式转换为 Π 表达式
-    PiExpr(
-        Argument,
-        Ref<Type<MetaInfo, Variable>>,
-        Ref<Expr<MetaInfo, Variable>>,
-    ),
+    PiExpr(Argument, Ref<Self>, Ref<Self>),
 
     /// `(Σ ((ident expr)) expr)`，被转换为单层
-    SigmaExpr(
-        Argument,
-        Ref<Type<MetaInfo, Variable>>,
-        Ref<Expr<MetaInfo, Variable>>,
-    ),
+    SigmaExpr(Argument, Ref<Self>, Ref<Self>),
 
     /// 函数调用，经过柯里化转换为只有一个参数
-    Apply(Ref<Expr<MetaInfo, Variable>>, Ref<Expr<MetaInfo, Variable>>),
+    Apply(Ref<Self>, Ref<Self>),
 
-    /// 内建调用，用长度为 0 的 [`Vec`] 表示单例内建对象如 `nil`。
-    // 这里或许可以用两层 `Info` 给第一参数加上元信息
-    BuiltinApply(Ref<str>, Vec<Expr<MetaInfo, Variable>>),
+    /// 内建标识符，如 `Atom`、`Nat`、`zero`、`nil`
+    BuiltinId(&'static str),
 
-    /// 类型的类型，后面的数字为 Universe Hierarchy 准备，目前统一是 0
-    /// TODO: U(Ref<Self>)
-    U(ULevel),
+    /// 内建调用，如 `(the Type expr)`、`(cons expr expr)`、`(add1 expr)`
+    BuiltinApply(&'static str, Vec<Self>),
 }
 
 pub type Type<M, V = DBI> = Expr<M, V>;
@@ -70,10 +63,10 @@ where
             Info(info, inner) => {
                 write!(f, "[{}: {}]", info, inner)
             }
-            Literal(ast::Literal::Atom(atom)) => {
+            AtomLiteral(atom) => {
                 write!(f, "'{}", atom)
             }
-            Literal(ast::Literal::Nat(n)) => {
+            NatLiteral(n) => {
                 write!(f, "{}", n)
             }
             Identifier(id) => {
@@ -91,22 +84,21 @@ where
             Apply(fun, arg) => {
                 write!(f, "({} {})", fun, arg)
             }
-            BuiltinApply(bf, args) => {
-                if args.is_empty() {
-                    return write!(f, "{}", bf);
+            BuiltinId(id) => {
+                write!(f, "{}", id)
+            }
+            BuiltinApply(bf, args) => match (*bf, args.as_slice()) {
+                ("U", [NatLiteral(0) | BuiltinId("zero")]) => {
+                    write!(f, "U")
                 }
-                write!(f, "({}", bf)?;
-                for arg in args {
-                    write!(f, " {}", arg)?;
+                _ => {
+                    write!(f, "({}", bf)?;
+                    for arg in args {
+                        write!(f, " {}", arg)?;
+                    }
+                    write!(f, ")")
                 }
-                write!(f, ")")
-            }
-            U(0) => {
-                write!(f, "U")
-            }
-            U(n) => {
-                write!(f, "(U {})", n)
-            }
+            },
         }
     }
 }
@@ -152,10 +144,10 @@ where
             Info(info, inner) => {
                 write!(f, "[{}: {}]", info, DBIPPrint(&**inner, *env))
             }
-            Literal(ast::Literal::Atom(atom)) => {
+            AtomLiteral(atom) => {
                 write!(f, "'{}", atom)
             }
-            Literal(ast::Literal::Nat(n)) => {
+            NatLiteral(n) => {
                 write!(f, "{}", n)
             }
             Identifier(n) => write!(
@@ -194,22 +186,21 @@ where
                 let arg = DBIPPrint(&**arg, &env);
                 write!(f, "({} {})", fun, arg)
             }
-            BuiltinApply(bf, args) => {
-                if args.is_empty() {
-                    return write!(f, "{}", bf);
+            BuiltinId(id) => {
+                write!(f, "{}", id)
+            }
+            BuiltinApply(bf, args) => match (*bf, args.as_slice()) {
+                ("U", [NatLiteral(0) | BuiltinId("zero")]) => {
+                    write!(f, "U")
                 }
-                write!(f, "({}", bf)?;
-                for arg in args {
-                    write!(f, " {}", DBIPPrint(&arg, &env))?;
+                _ => {
+                    write!(f, "({}", bf)?;
+                    for arg in args {
+                        write!(f, " {}", DBIPPrint(arg, &env))?;
+                    }
+                    write!(f, ")")
                 }
-                write!(f, ")")
-            }
-            U(0) => {
-                write!(f, "U")
-            }
-            U(n) => {
-                write!(f, "(U {})", n)
-            }
+            },
         }
     }
 }
@@ -288,29 +279,33 @@ impl fmt::Display for Argument {
 
 /// 将 Pi 表达式、Sigma 表达式展开为单层，箭头表达式转换为 Pi 表达式，
 /// Pair 表达式转换为 Sigma 表达式，
-/// 调用分别转化为函数调用和内建调用，并检查内建调用的合法性，将标识符 U 转换为
-/// core_ast::Expr::U。
+/// 调用分别转化为函数调用和内建调用，并检查内建调用的合法性
 #[throws]
 pub fn unfold(e: &ast::Expr) -> Expr<Never, Ref<str>> {
     use ast::Expr::*;
     match e {
-        Literal(_, lit) => Expr::Literal(lit.clone()),
+        Literal(_, ast::Literal::Nat(n)) => Expr::NatLiteral(*n),
+        Literal(_, ast::Literal::Atom(atom)) => Expr::AtomLiteral(atom.clone()),
         Identifier(_, id) => match &**id {
-            "U" => Expr::U(0),
-            _ if PIE_BUILTIN_SINGLETONS.contains(&&**id) => Expr::BuiltinApply(id.clone(), vec![]),
+            "U" => Expr::BuiltinApply("U", vec![Expr::NatLiteral(0)]),
+            _ if let Some(id) = PIE_BUILTIN_SINGLETONS.iter().find(|d| **d == &**id) => {
+                Expr::BuiltinId(id)
+            }
             _ => Expr::Identifier(id.clone()),
         },
         List(loc, exprs) => match &**exprs {
-            [Identifier(_, f), args @ ..] if get_builtin_argument_number(f).is_some() => {
-                let valid_argc = get_builtin_argument_number(f).unwrap();
-                if args.len() == valid_argc {
-                    Expr::BuiltinApply(f.clone(), map_result(args, unfold)?)
+            [Identifier(_, f), args @ ..]
+                if let Some((bid, argc)) =
+                    PIE_BUILTIN_FUNCTIONS.iter().find(|(bid, _)| **bid == **f) =>
+            {
+                if args.len() == *argc {
+                    Expr::BuiltinApply(bid, map_result(args, unfold)?)
                 } else {
                     throw!(Error {
                         loc: Some(loc.clone()),
                         erk: ErrorKind::IllegalArgumentNumber {
                             caller: f.to_string(),
-                            valid_argc,
+                            valid_argc: *argc,
                             current_argc: args.len(),
                         }
                     });
@@ -328,16 +323,6 @@ pub fn unfold(e: &ast::Expr) -> Expr<Never, Ref<str>> {
                         caller: f.to_string(),
                         valid_argc: 2,
                         current_argc: args.len(),
-                    }
-                })
-            }
-            [Identifier(loc, f), Literal(loc1, ast::Literal::Nat(n))] if &**f == "U" => Expr::U(*n),
-            [Identifier(loc, f), args @ ..] if &**f == "U" => {
-                throw!(Error {
-                    loc: Some(loc.clone()),
-                    erk: ErrorKind::IllegalArgumentType {
-                        caller: f.to_string(),
-                        valid_argt: "Nat".to_string(),
                     }
                 })
             }
@@ -399,16 +384,6 @@ fn unfold_list(exprs: &[ast::Expr]) -> Expr<Never, Ref<str>> {
     f
 }
 
-/// 通过内建函数名获取其应有的参数数量，如果传入的不是内建函数名，返回 `None`。
-fn get_builtin_argument_number(fname: &str) -> Option<usize> {
-    for (bf, n) in PIE_BUILTIN_FUNCTIONS {
-        if bf == fname {
-            return Some(n);
-        }
-    }
-    None
-}
-
 // 内建单例对象，其后是类型等级
 claim_array! {
 const PIE_BUILTIN_SINGLETONS: [&str; _] = [
@@ -429,6 +404,8 @@ const PIE_BUILTIN_FUNCTIONS: [(&str, usize); _] = [
     // `(the Type expr)`
     ("the", 2),
     // Pair
+    // convert Pair to Sigma, so no need to define Pair as builtin function
+    // ("Pair", 2),
     ("cons", 2),
     ("car", 1),
     ("cdr", 1),
@@ -464,6 +441,8 @@ const PIE_BUILTIN_FUNCTIONS: [(&str, usize); _] = [
     ("ind-Either", 4),
     // Absurd
     ("ind-Absurd", 2),
+    // U
+    ("U", 1),
 ];
 }
 
@@ -474,15 +453,10 @@ pub mod builtin_type {
 
     macro_rules! claim_builtin_types {
         ($(($tynm:ident, $tyf:ident)),+ $(,)?) => {
-            thread_local! {
-                $(
-                static $tynm: Expr<Never> = Expr::BuiltinApply(stringify!($tynm).into(), vec![]);
-                )+
-            }
             $(
                 #[inline]
                 pub fn $tyf() -> Expr<Never> {
-                    $tynm.with(Clone::clone)
+                    Expr::BuiltinId(stringify!($tynm))
                 }
             )+
         };
@@ -490,15 +464,10 @@ pub mod builtin_type {
 
     macro_rules! claim_builtin_types_with_args {
         ($(($tynm:ident, $tyf:ident, $($arg:ident),+)),+ $(,)?) => {
-            thread_local! {
-                $(
-                static $tynm: Ref<str> = stringify!($tynm).into();
-                )+
-            }
             $(
                 #[inline]
                 pub fn $tyf($($arg: Expr<Never>),+) -> Expr<Never> {
-                    Expr::BuiltinApply($tynm.with(Clone::clone), vec![$($arg),+])
+                    Expr::BuiltinApply(stringify!($tynm), vec![$($arg),+])
                 }
             )+
         };
@@ -509,21 +478,25 @@ pub mod builtin_type {
         (Trivial, trivial),
         (Atom, atom),
         (Nat, nat),
+        (zero, zero),
+        (nil, nil),
+        (vecnil, vecnil),
+        (sole, sole),
     }
 
     claim_builtin_types_with_args! {
         (List, list, t),
         (Vec, vec, t, l),
         (Either, either, l, r),
-    }
-
-    // (=, equal, t, l, r),
-    thread_local! {
-        static Equal: Ref<str> = "=".into();
+        (U, u_l, l),
     }
 
     #[inline]
     pub fn equal(t: Expr<Never>, l: Expr<Never>, r: Expr<Never>) -> Expr<Never> {
-        Expr::BuiltinApply(Equal.with(Clone::clone), vec![t, l, r])
+        Expr::BuiltinApply("=", vec![t, l, r])
+    }
+
+    pub fn u() -> Expr<Never> {
+        u_l(Expr::NatLiteral(0))
     }
 }

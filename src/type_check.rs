@@ -1,6 +1,7 @@
-use crate::{ast, core_ast, utils, Never};
-use ast::Literal;
-use core_ast::{builtin_type as bty, Argument, DBIPPrint as dpp, Expr, Type, ULevel};
+use crate::{core_ast, utils, Never};
+use core_ast::{
+    builtin_type as bty, Argument, DBIPPrint as dpp, Expr, Expr::NatLiteral, Type, ULevel,
+};
 use fehler::{throw, throws};
 use std::{cell::Cell, fmt};
 use utils::{LocatedError, Ref};
@@ -135,8 +136,8 @@ macro_rules! app {
 }
 
 macro_rules! bapp {
-    ($bf:expr $(,$a:expr)* $(,)?) => {
-        Expr::BuiltinApply($bf.into(), vec![$($a),*])
+    ($bf:expr $(,$a:expr)+ $(,)?) => {
+        Expr::BuiltinApply($bf, vec![$($a),*])
     };
 }
 
@@ -244,23 +245,23 @@ pub fn synthesize_with_type<M: fmt::Display>(
             match_builtin_args!(let [a, d] = &**args);
             let a_o = synthesize_with_type(a, ty_a, env)?;
             let d_o = synthesize_with_type(d, &substitute_arg(ty_d, arg, &a_o, env), env)?;
-            BuiltinApply(bf.clone(), vec![a_o, d_o])
+            BuiltinApply(bf, vec![a_o, d_o])
         }
         (BuiltinApply(bf, args), BuiltinApply(ty_bf, ty_args)) => {
             match (&**bf, &**args, &**ty_bf, &**ty_args) {
                 // ListI-1
-                ("nil", [], "List", [_ty]) => BuiltinApply(bf.clone(), vec![]),
+                ("nil", [], "List", [_ty]) => BuiltinApply(bf, vec![]),
                 // ListI-3，TLY 中不存在，我自己加的，使 (the (List (-> Nat Nat)) (:: (lambda (x) x) nil)) 这样的
                 // 表达式能推导出类型。
                 ("::", [e, es], "List", [ty_1]) => {
                     let e_o = synthesize_with_type(e, ty_1, env)?;
                     let es_o = synthesize_with_type(es, ty, env)?;
-                    BuiltinApply(bf.clone(), vec![e_o, es_o])
+                    BuiltinApply(bf, vec![e_o, es_o])
                 }
                 // VecI-1
                 ("vecnil", [], "Vec", [_ty, len]) => {
                     if is_literal_zero(len) {
-                        BuiltinApply(bf.clone(), vec![])
+                        BuiltinApply(bf, vec![])
                     } else {
                         throw!(ErrorKind::TypeNotMatch {
                             expected: format!("{}", dpp(ty, env)),
@@ -272,26 +273,26 @@ pub fn synthesize_with_type<M: fmt::Display>(
                 ("vec::", [e, es], "Vec", [ty_e, len]) if is_literal_add1(len) => {
                     let e_o = synthesize_with_type(e, ty_e, env)?;
                     let sublen = literal_sub1(len);
-                    let ty_subvec = BuiltinApply(ty_bf.clone(), vec![ty_e.clone(), sublen]);
+                    let ty_subvec = BuiltinApply(ty_bf, vec![ty_e.clone(), sublen]);
                     let es_o = synthesize_with_type(es, &ty_subvec, env)?;
-                    BuiltinApply(bf.clone(), vec![e_o, es_o])
+                    BuiltinApply(bf, vec![e_o, es_o])
                 }
                 // EitehrI-1
                 ("left", [lt], "Either", [ty_l, _ty_r]) => {
                     let lt_o = synthesize_with_type(lt, ty_l, env)?;
-                    BuiltinApply(bf.clone(), vec![lt_o])
+                    BuiltinApply(bf, vec![lt_o])
                 }
                 // EitehrI-2
                 ("right", [rt], "Either", [_ty_l, ty_r]) => {
                     let rt_o = synthesize_with_type(rt, ty_r, env)?;
-                    BuiltinApply(bf.clone(), vec![rt_o])
+                    BuiltinApply(bf, vec![rt_o])
                 }
                 // EqI
                 ("same", [mid], "=", [ty_x, from, to]) => {
                     let mid_o = synthesize_with_type(mid, ty_x, env)?;
                     expr_check_same(from, &mid_o, ty_x, env)?;
                     expr_check_same(&mid_o, to, ty_x, env)?;
-                    BuiltinApply(bf.clone(), vec![mid_o])
+                    BuiltinApply(bf, vec![mid_o])
                 }
                 _ => switch_rule(e, ty, env)?,
             }
@@ -304,8 +305,8 @@ pub fn synthesize_with_type<M: fmt::Display>(
 fn is_literal_zero<M>(e: &Expr<M>) -> bool {
     use Expr::*;
     match e {
-        Literal(ast::Literal::Nat(0)) => true,
-        BuiltinApply(bf, _) if &**bf == "zero" => true,
+        NatLiteral(0) => true,
+        BuiltinId(bid) if *bid == "zero" => true,
         _ => false,
     }
 }
@@ -313,7 +314,8 @@ fn is_literal_zero<M>(e: &Expr<M>) -> bool {
 fn is_literal_add1<M>(e: &Expr<M>) -> bool {
     use Expr::*;
     match e {
-        Literal(ast::Literal::Nat(n)) if *n > 0 => true,
+        NatLiteral(0) => false,
+        NatLiteral(_) => true,
         BuiltinApply(bf, _) if &**bf == "add1" => true,
         _ => false,
     }
@@ -322,7 +324,10 @@ fn is_literal_add1<M>(e: &Expr<M>) -> bool {
 fn literal_sub1(e: &Expr<Never>) -> Expr<Never> {
     use Expr::*;
     match e {
-        Literal(ast::Literal::Nat(n)) => Literal(ast::Literal::Nat(n - 1)),
+        NatLiteral(n) => {
+            debug_assert_ne!(*n, 0);
+            NatLiteral(n - 1)
+        }
         BuiltinApply(bf, args) => match (&**bf, &**args) {
             ("add1", [n]) => n.clone(),
             _ => unreachable!(),
@@ -335,6 +340,7 @@ fn literal_sub1(e: &Expr<Never>) -> Expr<Never> {
 /// 第七种 Judgement，见 Figure B.1。
 #[throws]
 pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr<Never>) {
+    use Expr::BuiltinId as Id;
     use Expr::*;
     log::trace!(
         "{:indent$}synthesize {}",
@@ -345,7 +351,8 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
     let _ig = IndentGuard::new();
     match e {
         Info(_, e) => synthesize(e, env)?,
-        Literal(lit) => synthesize_literal(lit),
+        NatLiteral(n) => (bty::nat(), NatLiteral(*n)),
+        AtomLiteral(a) => (bty::atom(), AtomLiteral(a.clone())),
         // Hypothesis
         Identifier(ident) => {
             let ty = env_get_nth_type(env, *ident).clone();
@@ -361,17 +368,22 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
             let ty = substitute_arg(&ty_ret, &var, &arg_o, env);
             (ty, app!(f_o, arg_o))
         }
-        // 目前还未引入 Universe Hierarchy，但这条规则似乎没有问题
-        U(n) => (U(n + 1), U(*n)),
+        Id(ty @ ("Atom" | "Nat" | "Trivial" | "Absurd")) => (bty::u(), Id(ty)),
+        Id("zero") => (bty::nat(), Id("zero")),
+        Id("sole") => (bty::trivial(), Id("sole")),
         BuiltinApply(bf, args) => {
             match (&**bf, &**args) {
-                // 内建单例对象
-                ("zero", []) => (bty::nat(), BuiltinApply(bf.clone(), vec![])),
-                ("sole", []) => (bty::trivial(), BuiltinApply(bf.clone(), vec![])),
-                // 内建类型
-                ("Atom" | "Nat" | "Trivial" | "Absurd" | "List" | "Vec" | "Either" | "=", _) => {
-                    resolve_type_rule(e, env)?
+                ("U", [n]) => {
+                    let n_o = synthesize_with_type(n, &bty::nat(), env)?;
+                    match n_o {
+                        NatLiteral(n) => (bty::u_l(NatLiteral(n + 1)), BuiltinApply(bf, vec![n_o])),
+                        _ => throw!(ErrorKind::CannotInferType {
+                            expr: format!("{}", dpp(e, env))
+                        }),
+                    }
                 }
+                // 内建类型
+                ("List" | "Vec" | "Either" | "=", _) => resolve_type_rule(e, env)?,
                 // nil 和 vecnil 必须附加类型
                 (s, []) => throw!(ErrorKind::CannotInferType { expr: s.to_owned() }),
                 // "The" 规则
@@ -385,19 +397,19 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
                     let (ty_e_o, e_o) = synthesize(e, env)?;
                     let ty_list = bty::list(ty_e_o);
                     let es_o = synthesize_with_type(es, &ty_list, env)?;
-                    (ty_list, BuiltinApply(bf.clone(), vec![e_o, es_o]))
+                    (ty_list, BuiltinApply(bf, vec![e_o, es_o]))
                 }
                 // NatI-2
                 ("add1", [n]) => {
                     let n_o = synthesize_with_type(n, &bty::nat(), env)?;
-                    (bty::nat(), BuiltinApply(bf.clone(), vec![n_o]))
+                    (bty::nat(), BuiltinApply(bf, vec![n_o]))
                 }
                 // VecE-1
                 ("head", [v]) => {
                     let (ty_v, v_o) = synthesize(v, env)?;
                     try_match! { let BuiltinApply("Vec", [ty_e, len]) = &ty_v; env };
                     if is_literal_add1(&len) {
-                        (ty_e.clone(), BuiltinApply(bf.clone(), vec![v_o]))
+                        (ty_e.clone(), BuiltinApply(bf, vec![v_o]))
                     } else {
                         throw!(ErrorKind::TypeNotMatch {
                             expected: "Vec longer than 1".to_owned(),
@@ -411,7 +423,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
                     try_match! { let BuiltinApply("Vec", [ty_e, len]) = &ty_v; env };
                     if is_literal_add1(&len) {
                         let ty_subv = bty::vec(ty_e.clone(), literal_sub1(len));
-                        (ty_subv, BuiltinApply(bf.clone(), vec![v_o]))
+                        (ty_subv, BuiltinApply(bf, vec![v_o]))
                     } else {
                         throw!(ErrorKind::TypeNotMatch {
                             expected: "Vec longer than 1".to_owned(),
@@ -423,7 +435,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
                 ("car", [pr]) => {
                     let (ty_pr, pr_o) = synthesize(pr, env)?;
                     try_match! { let SigmaExpr(_x, ty_a, _ty_d) = &ty_pr; env };
-                    (Expr::clone(ty_a), BuiltinApply(bf.clone(), vec![pr_o]))
+                    (Expr::clone(ty_a), BuiltinApply(bf, vec![pr_o]))
                 }
                 // SigmaE-2
                 ("cdr", [pr]) => {
@@ -433,7 +445,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
                     let car_pr = bapp!("car", pr_o.clone());
                     // FIXME!
                     let _ty_d_o = substitute(ty_d, "", &car_pr, env);
-                    (Expr::clone(ty_a), BuiltinApply(bf.clone(), vec![pr_o]))
+                    (Expr::clone(ty_a), BuiltinApply(bf, vec![pr_o]))
                 }
                 // NatE-1
                 ("which-Nat", [t, b, s]) => {
@@ -441,7 +453,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
                     let (ty_b, b_o) = synthesize(b, env)?;
                     let s_o = synthesize_with_type(s, &ty_b, env)?;
                     // FIXME: TLT 中需要多一层 the 表达式
-                    (ty_b, BuiltinApply(bf.clone(), vec![t_o, b_o, s_o]))
+                    (ty_b, BuiltinApply(bf, vec![t_o, b_o, s_o]))
                 }
                 // NatE-2
                 ("iter-Nat", [t, b, s]) => {
@@ -451,10 +463,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
                     let ty_s = pi!(ref ty_b, ref ty_b);
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     // FIXME: TLT 中需要多一层 the 表达式
-                    (
-                        ty_b.as_ref().clone(),
-                        BuiltinApply(bf.clone(), vec![t_o, b_o, s_o]),
-                    )
+                    (ty_b.as_ref().clone(), BuiltinApply(bf, vec![t_o, b_o, s_o]))
                 }
                 // NatE-3
                 ("rec-Nat", [t, b, s]) => {
@@ -464,19 +473,16 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
                     let ty_s = pi!(bty::nat(), ref ty_b, ref ty_b);
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     // FIXME: TLT 中需要多一层 the 表达式
-                    (
-                        ty_b.as_ref().clone(),
-                        BuiltinApply(bf.clone(), vec![t_o, b_o, s_o]),
-                    )
+                    (ty_b.as_ref().clone(), BuiltinApply(bf, vec![t_o, b_o, s_o]))
                 }
                 // NatE-4
                 ("ind-Nat", [t, m, b, s]) => {
                     let t_o = synthesize_with_type(t, &bty::nat(), env)?;
-                    let ty_m = pi!(bty::nat(), U(0));
+                    let ty_m = pi!(bty::nat(), bty::u());
                     let m_o = synthesize_with_type(m, &ty_m, env)?;
                     let m_o = Ref::new(m_o);
                     // FIXME: 在此需要编译期计算
-                    let ty_b = app!(ref m_o, Literal(ast::Literal::Nat(0)));
+                    let ty_b = app!(ref m_o, NatLiteral(0));
                     let b_o = synthesize_with_type(b, &ty_b, env)?;
                     // s : (k : Nat) -> (m k) -> (m (add1 k))
                     let ty_s = pi!(
@@ -488,7 +494,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
                     let ty_o = app!(ref m_o, t_o.clone());
                     (
                         ty_o,
-                        BuiltinApply(bf.clone(), vec![t_o, m_o.as_ref().clone(), b_o, s_o]),
+                        BuiltinApply(bf, vec![t_o, m_o.as_ref().clone(), b_o, s_o]),
                     )
                 }
                 // ListE-1
@@ -500,20 +506,17 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
                     let ty_s = pi!(ty_e.clone(), ty_t, ref ty_b, ref ty_b,);
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     // FIXME: TLT 中需要多一层 the 表达式
-                    (
-                        ty_b.as_ref().clone(),
-                        BuiltinApply(bf.clone(), vec![t_o, b_o, s_o]),
-                    )
+                    (ty_b.as_ref().clone(), BuiltinApply(bf, vec![t_o, b_o, s_o]))
                 }
                 // ListE-2
                 ("ind-List", [t, m, b, s]) => {
                     let (ty_t, t_o) = synthesize(t, env)?;
                     try_match! { let BuiltinApply("List", [ty_e]) = &ty_t; env }
-                    let ty_m = pi!(ty_t.clone(), U(0));
+                    let ty_m = pi!(ty_t.clone(), bty::u());
                     let m_o = synthesize_with_type(m, &ty_m, env)?;
                     let m_o = Ref::new(m_o);
                     // FIXME: 在此需要编译期计算
-                    let ty_b = app!(ref m_o, bapp!("nil"));
+                    let ty_b = app!(ref m_o, bty::nil());
                     let b_o = synthesize_with_type(b, &ty_b, env)?;
                     let ty_s = pi!(
                         ty_e.clone(),
@@ -524,7 +527,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     (
                         app!(ref m_o, t_o.clone()),
-                        BuiltinApply(bf.clone(), vec![t_o, m_o.as_ref().clone(), b_o, s_o]),
+                        BuiltinApply(bf, vec![t_o, m_o.as_ref().clone(), b_o, s_o]),
                     )
                 }
                 // VecE-3
@@ -533,11 +536,15 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
                     let (ty_t, t_o) = synthesize(t, env)?;
                     try_match! { let BuiltinApply("Vec", [ty_e, n]) = &ty_t; env }
                     expr_check_same(&l_o, &n, &bty::nat(), env)?;
-                    let ty_m = pi!(bty::nat(), bapp!("Vec", ty_e.clone(), Identifier(0)), U(0));
+                    let ty_m = pi!(
+                        bty::nat(),
+                        bapp!("Vec", ty_e.clone(), Identifier(0)),
+                        bty::u()
+                    );
                     let m_o = synthesize_with_type(m, &ty_m, env)?;
                     let m_o = Ref::new(m_o);
                     // FIXME: 在此需要编译期计算
-                    let ty_b = app!(ref m_o, bapp!("zero"), bapp!("vecnil"));
+                    let ty_b = app!(ref m_o, bty::zero(), bty::vecnil());
                     let b_o = synthesize_with_type(b, &ty_b, env)?;
                     let ty_s = pi!(
                         bty::nat(),
@@ -553,14 +560,14 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     (
                         app!(ref m_o, l_o.clone(), t_o.clone()),
-                        BuiltinApply(bf.clone(), vec![l_o, t_o, m_o.as_ref().clone(), b_o, s_o]),
+                        BuiltinApply(bf, vec![l_o, t_o, m_o.as_ref().clone(), b_o, s_o]),
                     )
                 }
                 // EitherE
                 ("ind-Either", [t, m, bl, br]) => {
                     let (ty_t, t_o) = synthesize(t, env)?;
                     try_match! { let BuiltinApply("Either", [ty_p, ty_s]) = &ty_t; env }
-                    let ty_m = pi!(ty_t.clone(), U(0));
+                    let ty_m = pi!(ty_t.clone(), bty::u());
                     let m_o = synthesize_with_type(m, &ty_m, env)?;
                     let m_o = Ref::new(m_o);
                     // FIXME: 在此需要编译期计算
@@ -570,25 +577,25 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
                     let br_o = synthesize_with_type(br, &ty_br, env)?;
                     (
                         app!(ref m_o, t_o.clone()),
-                        BuiltinApply(bf.clone(), vec![t_o, m_o.as_ref().clone(), bl_o, br_o]),
+                        BuiltinApply(bf, vec![t_o, m_o.as_ref().clone(), bl_o, br_o]),
                     )
                 }
                 // AbsE
                 ("ind-Absurd", [t, m]) => {
-                    let t_o = synthesize_with_type(t, &bapp!("Absurd"), env)?;
+                    let t_o = synthesize_with_type(t, &bty::absurd(), env)?;
                     let (_lm, m_o) = resolve_type(m, env)?;
-                    (m_o.clone(), BuiltinApply(bf.clone(), vec![t_o, m_o]))
+                    (m_o.clone(), BuiltinApply(bf, vec![t_o, m_o]))
                 }
                 // EqE-1
                 ("replace", [t, _m, b]) => {
                     let (ty_t, t_o) = synthesize(t, env)?;
                     try_match! { let BuiltinApply("=", [ty_x, from, to]) = &ty_t; env }
-                    let m_o = pi!(ty_x.clone(), U(0));
+                    let m_o = pi!(ty_x.clone(), bty::u());
                     let m_o = Ref::new(m_o);
                     let b_o = synthesize_with_type(b, &app!(ref m_o, from.clone()), env)?;
                     (
                         app!(ref m_o, to.clone()),
-                        bapp!(bf.clone(), t_o, m_o.as_ref().clone(), b_o),
+                        bapp!(bf, t_o, m_o.as_ref().clone(), b_o),
                     )
                 }
                 // EqE-2
@@ -606,7 +613,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
                         app!(ref f_o, to.clone())
                     );
                     // FIXME: TLT 中需要多一个参数
-                    (ty, bapp!(bf.clone(), t_o, f_o.as_ref().clone()))
+                    (ty, bapp!(bf, t_o, f_o.as_ref().clone()))
                 }
                 // EqE-3
                 ("symm", [t]) => {
@@ -614,7 +621,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
                     try_match! { let BuiltinApply("=", [ty_x, from, to]) = &ty_t; env }
                     (
                         bapp!("=", ty_x.clone(), to.clone(), from.clone()),
-                        bapp!(bf.clone(), t_o),
+                        bapp!(bf, t_o),
                     )
                 }
                 // EqE-4
@@ -627,7 +634,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
                     expr_check_same(mid1, mid2, ty_x, env)?;
                     (
                         bapp!("=", ty_x.clone(), from.clone(), to.clone()),
-                        bapp!(bf.clone(), t1_o, t2_o),
+                        bapp!(bf, t1_o, t2_o),
                     )
                 }
                 // EqE-5
@@ -637,7 +644,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
                     let ty_m = pi!(
                         ty_x.clone(),
                         bapp!("=", ty_x.clone(), from.clone(), Identifier(0)),
-                        U(0)
+                        bty::u()
                     );
                     let m_o = synthesize_with_type(m, &ty_m, env)?;
                     let m_o = Ref::new(m_o);
@@ -645,7 +652,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
                     let b_o = synthesize_with_type(b, &ty_b, env)?;
                     (
                         app!(ref m_o, to.clone(), t_o.clone()),
-                        bapp!(bf.clone(), t_o, m_o.as_ref().clone(), b_o),
+                        bapp!(bf, t_o, m_o.as_ref().clone(), b_o),
                     )
                 }
                 _ => throw!(ErrorKind::CannotInferType {
@@ -694,14 +701,6 @@ pub fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (ULevel, Type<Ne
         }
         BuiltinApply(bf, args) => {
             match (&**bf, &**args) {
-                // 内建单例对象
-                (s, []) => match s {
-                    "Atom" | "Nat" | "Trivial" | "Absurd" => (0, BuiltinApply(bf.clone(), vec![])),
-                    _ => throw!(ErrorKind::TypeNotMatch {
-                        expected: "type".to_owned(),
-                        given: bf.to_string()
-                    }),
-                },
                 // ListF
                 ("List", [ty_e]) => {
                     let (l, ty_e_o) = resolve_type(ty_e, env)?;
@@ -726,14 +725,24 @@ pub fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (ULevel, Type<Ne
                     let to_o = synthesize_with_type(to, &ty_o, env)?;
                     (l, bty::equal(ty_o, from_o, to_o))
                 }
+                // UF
+                ("U", [n]) => {
+                    let n_o = synthesize_with_type(n, &bty::nat(), env)?;
+                    match n_o {
+                        NatLiteral(n) => (n + 1, bty::u_l(n_o)),
+                        _ => throw!(ErrorKind::CannotInferType {
+                            expr: format!("{}", dpp(e, env))
+                        }),
+                    }
+                }
                 _ => unreachable!(),
             }
         }
-        // UF
-        U(n) => (n + 1, U(*n)),
+        // 内建单例对象
+        BuiltinId(ty @ ("Atom" | "Nat" | "Trivial" | "Absurd")) => (0, BuiltinId(ty)),
         //Literal, Lambda, Identifier, Apply
         // El
-        _ => (0, synthesize_with_type(e, &U(0), env)?),
+        _ => (0, synthesize_with_type(e, &bty::u(), env)?),
     }
 }
 
@@ -742,7 +751,7 @@ pub fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (ULevel, Type<Ne
 #[throws]
 fn resolve_type_rule<M: fmt::Display>(ty: &Expr<M>, env: &Env) -> (Type<Never>, Type<Never>) {
     let (l, t_o) = resolve_type(ty, env)?;
-    (Expr::U(l), t_o)
+    (bty::u_l(NatLiteral(l)), t_o)
 }
 
 /// 检查是否相同类型
@@ -772,11 +781,25 @@ fn is_type_check_same(ty1: &Type<Never>, ty2: &Type<Never>, env: &Env) -> bool {
     // TODO: 比较前充分计算 ty1 和 ty2
     match (ty1, ty2) {
         (Identifier(id1), Identifier(id2)) => id1 == id2,
-        (U(m), U(n)) => m == n,
-        (BuiltinApply(f1, args1), BuiltinApply(f2, args2))
-            if args1.is_empty() && args2.is_empty() =>
-        {
-            f1 == f2
+        (BuiltinId(ty1), BuiltinId(ty2)) => ty1 == ty2,
+        (BuiltinApply(f1, args1), BuiltinApply(f2, args2)) => {
+            match (&**f1, &**args1, &**f2, &**args2) {
+                ("List", [ty_e1], "List", [ty_e2]) => is_type_check_same(ty_e1, ty_e2, env),
+                ("Vec", [ty_e1, len1], "Vec", [ty_e2, len2]) => {
+                    is_type_check_same(ty_e1, ty_e2, env)
+                        && is_expr_check_same(len1, len2, &bty::nat(), env)
+                }
+                ("Either", [ty_l1, ty_r1], "Either", [ty_l2, ty_r2]) => {
+                    is_type_check_same(ty_l1, ty_l2, env) && is_type_check_same(ty_r1, ty_r2, env)
+                }
+                ("=", [ty_x1, from1, to1], "=", [ty_x2, from2, to2]) => {
+                    is_type_check_same(ty_x1, ty_x2, env)
+                        && is_expr_check_same(from1, from2, ty_x1, env)
+                        && is_expr_check_same(to1, to2, ty_x1, env)
+                }
+                ("U", [n1], "U", [n2]) => is_expr_check_same(n1, n2, &bty::nat(), env),
+                _ => todo!(),
+            }
         }
         _ => {
             todo!()
@@ -812,37 +835,27 @@ fn is_expr_check_same(c1: &Expr<Never>, c2: &Expr<Never>, ct: &Type<Never>, env:
     // TODO: 比较前充分计算 c1、c2、ct
     match (c1, c2) {
         (Identifier(id1), Identifier(id2)) => id1 == id2,
-        (U(m), U(n)) => m == n,
-        // 比较自然数，考虑字面量和构造器表示
-        (Literal(ast::Literal::Nat(m)), Literal(ast::Literal::Nat(n))) => m == n,
-        (BuiltinApply(f, args), Literal(ast::Literal::Nat(n)))
-        | (Literal(ast::Literal::Nat(n)), BuiltinApply(f, args)) => match (&**f, &**args, n) {
-            ("zero", _, 0) => true,
-            ("zero", _, _) => false,
-            ("add1", [_], 0) => false,
-            ("add1", [p], n) => is_expr_check_same(p, &Literal(ast::Literal::Nat(n - 1)), ct, env),
-            _ => unreachable!(),
-        },
-        (BuiltinApply(f1, args1), BuiltinApply(f2, args2)) => {
-            match (&**f1, &**args1, &**f2, &**args2) {
-                ("zero", _, "zero", _) => true,
-                ("add1", [p1], "add1", [p2]) => is_expr_check_same(p1, p2, ct, env),
-                _ => todo!(),
-            }
+        (BuiltinApply("U", l1), BuiltinApply("U", l2)) => {
+            is_expr_check_same(&l1[0], &l2[0], &bty::nat(), env)
         }
+        // 比较自然数，考虑字面量和构造器表示
+        (NatLiteral(m), NatLiteral(n)) => m == n,
+        (BuiltinId("zero"), BuiltinId("zero")) => true,
+        (BuiltinId("zero"), NatLiteral(0)) | (NatLiteral(0), BuiltinId("zero")) => true,
+        (BuiltinId("zero"), BuiltinId(_) | BuiltinApply(_, _)) => false,
+        (BuiltinId(_) | BuiltinApply(_, _), BuiltinId("zero")) => false,
+        (BuiltinApply("add1", args), NatLiteral(n))
+        | (NatLiteral(n), BuiltinApply("add1", args)) => {
+            *n > 0 && is_expr_check_same(&args[0], &NatLiteral(n - 1), ct, env)
+        }
+        (BuiltinApply("add1", args), BuiltinApply("add1", args2)) => {
+            is_expr_check_same(&args[0], &args2[0], ct, env)
+        }
+        (BuiltinId(ty1), BuiltinId(ty2)) if ty1 == ty2 => true,
         _ => {
             todo!()
         }
     }
-}
-
-/// 直接从字面量推导类型
-fn synthesize_literal(lit: &Literal) -> (Type<Never>, Expr<Never>) {
-    let ty = match lit {
-        Literal::Nat(_) => bty::nat(),
-        Literal::Atom(_) => bty::atom(),
-    };
-    (ty, Expr::Literal(lit.clone()))
 }
 
 pub fn default_environment() -> Env {

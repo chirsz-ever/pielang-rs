@@ -77,7 +77,9 @@ fn main() {
                 log::trace!("-----");
                 tc::expr_check_same(&e1_o, &e2_o, &ty, &env)?;
             }
-            _ => todo!("Only `expression` and `check-same` are supported in command line arguments")
+            _ => {
+                todo!("Only `expression` and `check-same` are supported in command line arguments")
+            }
         }
     }
 
