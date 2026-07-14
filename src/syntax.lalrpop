@@ -39,7 +39,9 @@ match {
 
 Enclosed<T> = { "(" <T> ")", "[" <T> "]", "{" <T> "}" }
 
-pub Grammer = HeaderComment* <GlobalStatemant*>;
+pub Grammer = HeaderComment* <GlobalStatemantList>;
+
+pub GlobalStatemantList = <GlobalStatemant*>;
 
 pub GlobalStatemant: GlobalStatemant = {
     <l:@L> <e:Enclosed<("claim" <Symbol> <Expr>)>> <r:@R> => {

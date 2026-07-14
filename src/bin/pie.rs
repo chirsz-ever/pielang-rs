@@ -53,32 +53,38 @@ fn main() {
         interpret_file(input, opt.check_type_only, &mut env)?;
     }
 
-    let parser = syntax::GlobalStatemantParser::new();
+    let parser = syntax::GlobalStatemantListParser::new();
     use ast::GlobalStatemant::*;
     for e in &opt.exprs {
-        let stat = parser.parse(e).map_err(|err| anyhow::anyhow!("{}", err))?;
-        match stat {
-            Expression(expr) => {
-                let e_dbi = transform_expression(&expr)?;
-                if opt.check_type_only {
-                    let (ty, e_o) = tc::synthesize(&e_dbi, &env)?;
-                    println!("(the {} {})", dpp(&ty, &env), dpp(&e_o, &env));
-                } else {
-                    todo!("Implement evaluation of expressions from command line arguments");
+        let stats = parser
+            .parse(e)
+            .map_err(|err| anyhow::anyhow!("{}", err))?;
+        for stat in stats {
+            match stat {
+                Expression(expr) => {
+                    let e_dbi = transform_expression(&expr)?;
+                    if opt.check_type_only {
+                        let (ty, e_o) = tc::synthesize(&e_dbi, &env)?;
+                        println!("(the {} {})", dpp(&ty, &env), dpp(&e_o, &env));
+                    } else {
+                        todo!("Implement evaluation of expressions from command line arguments");
+                    }
                 }
-            }
-            CheckSame(_, ty, e1, e2) => {
-                let e1 = transform_expression(&e1)?;
-                let e2 = transform_expression(&e2)?;
-                let ty = transform_expression(&ty)?;
-                let (_, ty_o) = tc::resolve_type(&ty, &env)?;
-                let e1_o = tc::synthesize_with_type(&e1, &ty_o, &env)?;
-                let e2_o = tc::synthesize_with_type(&e2, &ty_o, &env)?;
-                log::trace!("-----");
-                tc::expr_check_same(&e1_o, &e2_o, &ty, &env)?;
-            }
-            _ => {
-                todo!("Only `expression` and `check-same` are supported in command line arguments")
+                CheckSame(_, ty, e1, e2) => {
+                    let e1 = transform_expression(&e1)?;
+                    let e2 = transform_expression(&e2)?;
+                    let ty = transform_expression(&ty)?;
+                    let (_, ty_o) = tc::resolve_type(&ty, &env)?;
+                    let e1_o = tc::synthesize_with_type(&e1, &ty_o, &env)?;
+                    let e2_o = tc::synthesize_with_type(&e2, &ty_o, &env)?;
+                    log::trace!("-----");
+                    tc::expr_check_same(&e1_o, &e2_o, &ty, &env)?;
+                }
+                _ => {
+                    todo!(
+                        "Only `expression` and `check-same` are supported in command line arguments"
+                    )
+                }
             }
         }
     }
@@ -143,7 +149,7 @@ fn repl(check_type_only: bool, env: &Env) {
     let conf = Config::builder().auto_add_history(true).build();
     let mut rl = Editor::<(), MemHistory>::with_history(conf, MemHistory::new())?;
     rl.bind_sequence(KeyEvent::ctrl('\\'), Cmd::Insert(1, String::from("λ")));
-    let parser = syntax::GlobalStatemantParser::new();
+    let parser = syntax::GrammerParser::new();
 
     for readline in rl.iter("> ") {
         match readline {
@@ -152,44 +158,58 @@ fn repl(check_type_only: bool, env: &Env) {
                 if line.is_empty() {
                     continue;
                 }
-                match parser.parse(&line).map_err(|e| anyhow::anyhow!("{}", e)) {
-                    Ok(Expression(expr)) => {
-                        let do_expr = || -> anyhow::Result<()> {
-                            let e = transform_expression(&expr)?;
-                            let (ty, e_o) =
-                                tc::synthesize(&e, &env).context("Can't determine a type")?;
-                            if check_type_only {
-                                println!("(the {} {})", dpp(&ty, &env), dpp(&e_o, &env));
-                            } else {
-                                todo!("Implement evaluation of expressions in REPL");
+                match parser.parse(line).map_err(|e| anyhow::anyhow!("{}", e)) {
+                    Ok(stats) => {
+                        for stat in stats {
+                            match stat {
+                                Expression(expr) => {
+                                    let do_expr = || -> anyhow::Result<()> {
+                                        let e = transform_expression(&expr)?;
+                                        let (ty, e_o) = tc::synthesize(&e, env)
+                                            .context("Can't determine a type")?;
+                                        if check_type_only {
+                                            println!(
+                                                "(the {} {})",
+                                                dpp(&ty, env),
+                                                dpp(&e_o, env)
+                                            );
+                                        } else {
+                                            todo!(
+                                                "Implement evaluation of expressions in REPL"
+                                            );
+                                        }
+                                        Ok(())
+                                    };
+                                    match do_expr() {
+                                        Ok(()) => {}
+                                        Err(err) => eprintln!("Error: {:?}", err),
+                                    }
+                                }
+                                Define(_, _, _) => {
+                                    eprintln!("`define` is not yet supported in REPL.")
+                                }
+                                Claim(_, _, _) => {
+                                    eprintln!("`claim` is not yet supported in REPL.")
+                                }
+                                CheckSame(_, ty, e1, e2) => {
+                                    let do_check_same = || -> anyhow::Result<()> {
+                                        let e1 = transform_expression(&e1)?;
+                                        let e2 = transform_expression(&e2)?;
+                                        let ty = transform_expression(&ty)?;
+                                        let (_, ty_o) = tc::resolve_type(&ty, env)?;
+                                        let e1_o =
+                                            tc::synthesize_with_type(&e1, &ty_o, env)?;
+                                        let e2_o =
+                                            tc::synthesize_with_type(&e2, &ty_o, env)?;
+                                        tc::expr_check_same(&e1_o, &e2_o, &ty, env)?;
+                                        Ok(())
+                                    };
+                                    match do_check_same() {
+                                        Ok(()) => {}
+                                        Err(err) => eprintln!("Error: {:?}", err),
+                                    }
+                                }
                             }
-                            Ok(())
-                        };
-                        match do_expr() {
-                            Ok(()) => {}
-                            Err(err) => eprintln!("Error: {:?}", err),
-                        }
-                    }
-                    Ok(Define(_, _, _)) => {
-                        eprintln!("`define` is not yet supported in REPL.")
-                    }
-                    Ok(Claim(_, _, _)) => {
-                        eprintln!("`claim` is not yet supported in REPL.")
-                    }
-                    Ok(CheckSame(_, ty, e1, e2)) => {
-                        let do_check_same = || -> anyhow::Result<()> {
-                            let e1 = transform_expression(&e1)?;
-                            let e2 = transform_expression(&e2)?;
-                            let ty = transform_expression(&ty)?;
-                            let (_, ty_o) = tc::resolve_type(&ty, env)?;
-                            let e1_o = tc::synthesize_with_type(&e1, &ty_o, env)?;
-                            let e2_o = tc::synthesize_with_type(&e2, &ty_o, env)?;
-                            tc::expr_check_same(&e1_o, &e2_o, &ty, env)?;
-                            Ok(())
-                        };
-                        match do_check_same() {
-                            Ok(()) => {}
-                            Err(err) => eprintln!("Error: {:?}", err),
                         }
                     }
                     Err(err) => {
