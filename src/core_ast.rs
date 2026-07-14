@@ -76,10 +76,34 @@ where
                 write!(f, "(λ ({}) {})", arg, body)
             }
             PiExpr(arg, ty, body) => {
-                write!(f, "(Π (({} {})) {})", arg, ty, body)
+                if matches!(arg, Argument::Dummy) {
+                    write!(f, "(→ {}", ty)?;
+                    let mut current: &Self = &**body;
+                    loop {
+                        match current {
+                            PiExpr(next_arg, next_ty, next_body)
+                                if matches!(next_arg, Argument::Dummy) =>
+                            {
+                                write!(f, " {}", next_ty)?;
+                                current = &**next_body;
+                            }
+                            _ => {
+                                write!(f, " {})", current)?;
+                                break;
+                            }
+                        }
+                    }
+                    Ok(())
+                } else {
+                    write!(f, "(Π (({} {})) {})", arg, ty, body)
+                }
             }
             SigmaExpr(arg, ty, body) => {
-                write!(f, "(Σ (({} {})) {})", arg, ty, body)
+                if matches!(arg, Argument::Dummy) {
+                    write!(f, "(Pair {} {})", ty, body)
+                } else {
+                    write!(f, "(Σ (({} {})) {})", arg, ty, body)
+                }
             }
             Apply(fun, arg) => {
                 write!(f, "({} {})", fun, arg)
@@ -170,16 +194,46 @@ where
             PiExpr(arg, ty, body) => {
                 let arg_name = fetch_fresh_name(arg.into(), env);
                 let new_env = ext_env(env, &arg_name);
-                let ty = DBIPPrint(&**ty, &new_env);
-                let body = DBIPPrint(&**body, &new_env);
-                write!(f, "(Π (({} {})) {})", arg_name, ty, body)
+                if matches!(arg, Argument::Dummy) {
+                    let ty = DBIPPrint(&**ty, &new_env);
+                    write!(f, "(→ {}", ty)?;
+                    let mut current: &Expr<_> = &**body;
+                    loop {
+                        match current {
+                            PiExpr(next_arg, next_ty, next_body)
+                                if matches!(next_arg, Argument::Dummy) =>
+                            {
+                                let next_arg_name = fetch_fresh_name(next_arg.into(), &new_env);
+                                let next_env = ext_env(&new_env, &next_arg_name);
+                                let next_ty = DBIPPrint(&**next_ty, &next_env);
+                                write!(f, " {}", next_ty)?;
+                                current = &**next_body;
+                            }
+                            _ => {
+                                write!(f, " {})", DBIPPrint(current, &new_env))?;
+                                break;
+                            }
+                        }
+                    }
+                    Ok(())
+                } else {
+                    let ty = DBIPPrint(&**ty, &new_env);
+                    let body = DBIPPrint(&**body, &new_env);
+                    write!(f, "(Π (({} {})) {})", arg_name, ty, body)
+                }
             }
             SigmaExpr(arg, ty, body) => {
                 let arg_name = fetch_fresh_name(arg.into(), env);
                 let new_env = ext_env(env, &arg_name);
-                let ty = DBIPPrint(&**ty, &new_env);
-                let body = DBIPPrint(&**body, &new_env);
-                write!(f, "(Σ (({} {})) {})", arg_name, ty, body)
+                if matches!(arg, Argument::Dummy) {
+                    let ty = DBIPPrint(&**ty, &new_env);
+                    let body = DBIPPrint(&**body, &new_env);
+                    write!(f, "(Pair {} {})", ty, body)
+                } else {
+                    let ty = DBIPPrint(&**ty, &new_env);
+                    let body = DBIPPrint(&**body, &new_env);
+                    write!(f, "(Σ (({} {})) {})", arg_name, ty, body)
+                }
             }
             Apply(fun, arg) => {
                 let fun = DBIPPrint(&**fun, &env);
@@ -337,14 +391,20 @@ pub fn unfold(e: &ast::Expr) -> Expr<Never, Ref<str>> {
             e
         }
         PiExpr(_, args, body) => {
-            let mut e = unfold(body)?;
-            // 注意从后向前的顺序
-            for (ast::Symbol(_, sym), ty) in args.iter().rev() {
-                e = Expr::PiExpr(
-                    self::Argument::Symbol(sym.clone()),
-                    Ref::new(unfold(ty)?),
-                    Ref::new(e),
-                );
+            let body = unfold(body)?;
+            let types: Vec<_> = args
+                .iter()
+                .map(|(_, ty)| unfold(ty))
+                .collect::<Result<_, Error>>()?;
+            let mut e = body;
+            for (i, (ast::Symbol(_, sym), _)) in args.iter().enumerate().rev() {
+                let has_body_ref = occurs(&e, sym) || types[i + 1..].iter().any(|t| occurs(t, sym));
+                let arg = if has_body_ref {
+                    self::Argument::Symbol(sym.clone())
+                } else {
+                    self::Argument::Dummy
+                };
+                e = Expr::PiExpr(arg, Ref::new(types[i].clone()), Ref::new(e));
             }
             e
         }
@@ -359,14 +419,20 @@ pub fn unfold(e: &ast::Expr) -> Expr<Never, Ref<str>> {
             e
         }
         SigmaExpr(_, args, body) => {
-            let mut e = unfold(body)?;
-            // 注意从后向前的顺序
-            for (ast::Symbol(_, sym), ty) in args.iter().rev() {
-                e = Expr::SigmaExpr(
-                    self::Argument::Symbol(sym.clone()),
-                    Ref::new(unfold(ty)?),
-                    Ref::new(e),
-                );
+            let body = unfold(body)?;
+            let types: Vec<_> = args
+                .iter()
+                .map(|(_, ty)| unfold(ty))
+                .collect::<Result<_, Error>>()?;
+            let mut e = body;
+            for (i, (ast::Symbol(_, sym), _)) in args.iter().enumerate().rev() {
+                let has_body_ref = occurs(&e, sym) || types[i + 1..].iter().any(|t| occurs(t, sym));
+                let arg = if has_body_ref {
+                    self::Argument::Symbol(sym.clone())
+                } else {
+                    self::Argument::Dummy
+                };
+                e = Expr::SigmaExpr(arg, Ref::new(types[i].clone()), Ref::new(e));
             }
             e
         }
@@ -382,6 +448,28 @@ fn unfold_list(exprs: &[ast::Expr]) -> Expr<Never, Ref<str>> {
         f = Expr::Apply(Ref::new(f), Ref::new(unfold(e)?));
     }
     f
+}
+
+/// 检查 expr 中是否直接出现标识符 `var`（不考虑遮蔽）
+fn occurs(e: &Expr<Never, Ref<str>>, var: &str) -> bool {
+    use Expr::*;
+    match e {
+        Info(_, inner) => occurs(inner, var),
+        Identifier(id) => **id == *var,
+        NatLiteral(_) | AtomLiteral(_) | BuiltinId(_) => false,
+        LambdaExpr(arg, body) => !match_arg(var, arg) && occurs(body, var),
+        PiExpr(arg, ty, body) => !match_arg(var, arg) && (occurs(ty, var) || occurs(body, var)),
+        SigmaExpr(arg, ty, body) => !match_arg(var, arg) && (occurs(ty, var) || occurs(body, var)),
+        Apply(f, a) => occurs(f, var) || occurs(a, var),
+        BuiltinApply(_, args) => args.iter().any(|arg| occurs(arg, var)),
+    }
+}
+
+fn match_arg(var: &str, arg: &Argument) -> bool {
+    match arg {
+        Argument::Dummy => true,
+        Argument::Symbol(sym) => **sym == *var,
+    }
 }
 
 // 内建单例对象，其后是类型等级

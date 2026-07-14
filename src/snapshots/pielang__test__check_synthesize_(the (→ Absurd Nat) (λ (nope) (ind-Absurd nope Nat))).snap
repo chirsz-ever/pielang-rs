@@ -3,5 +3,5 @@ source: src/test.rs
 description: (the (→ Absurd Nat) (λ (nope) (ind-Absurd nope Nat)))
 expression: output
 ---
-type: (Π ((x Absurd)) Nat)
+type: (→ Absurd Nat)
 expr: (λ (nope) (ind-Absurd nope Nat))
