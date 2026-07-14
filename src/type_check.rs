@@ -345,7 +345,7 @@ fn literal_sub1(e: &Expr<Never>) -> Expr<Never> {
 /// 第七种 Judgement，见 Figure B.1。
 #[tc_log(
     "synthesize `{}`", dpp(e, env);
-    "=> ({}, {})", dpp(&ret.0, env), dpp(&ret.1, env)
+    "=> (the {} {})", dpp(&ret.0, env), dpp(&ret.1, env)
 )]
 #[throws]
 pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr<Never>) {
@@ -674,7 +674,7 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
 /// 改进的第四种 Judgement，见 Figure B.1。
 #[tc_log(
     "resolve `{}` is a type", dpp(e, env);
-    "=> (U {}, {})", ret.0, dpp(&ret.1, env)
+    "=> (the (U {}) {})", ret.0, dpp(&ret.1, env)
 )]
 #[throws]
 pub fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (ULevel, Type<Never>) {
