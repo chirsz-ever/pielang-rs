@@ -3,6 +3,7 @@ use core_ast::{
     builtin_type as bty, Argument, DBIPPrint as dpp, Expr, Expr::NatLiteral, Type, ULevel,
 };
 use fehler::{throw, throws};
+use pielang_macros::tc_log;
 use std::{cell::Cell, fmt};
 use utils::{LocatedError, Ref};
 
@@ -146,10 +147,10 @@ thread_local! {
 }
 
 /// 缩进守卫，进入时增加缩进，退出时自动恢复
-struct IndentGuard;
+pub struct IndentGuard;
 
 impl IndentGuard {
-    fn new() -> Self {
+    pub fn new() -> Self {
         INDENT.set(INDENT.get() + 1);
         IndentGuard
     }
@@ -164,16 +165,8 @@ impl std::ops::Drop for IndentGuard {
 // TODO: 使用 De Bruijn 方法解决变量名、作用域的各种问题
 
 /// 执行 expr[var/e]，将 expr 中自由出现的 var 替换为 e，e 应当是没有自由变量的。
+#[tc_log("substitute `{}` to `{}` in `{}`", var, dpp(e, env), dpp(expr, env))]
 fn substitute(expr: &Expr<Never>, var: &str, e: &Expr<Never>, env: &Env) -> Expr<Never> {
-    log::trace!(
-        "{:indent$}substitute `{}` to {} in {}",
-        "",
-        var,
-        dpp(e, env),
-        dpp(expr, env),
-        indent = INDENT.get(),
-    );
-    let _ig = IndentGuard::new();
     todo!()
 }
 
@@ -213,6 +206,10 @@ fn switch_rule<M: fmt::Display>(e: &Expr<M>, ty: &Type<Never>, env: &Env) -> Exp
 /// 第六种 Judgement，见 Figure B.1。
 /// 对于构造式，有唯一相关的类型与之匹配；
 /// 其它表达式则应用 Which 规则：试图综合得出其类型，再将结果与所给类型比较。
+#[tc_log(
+    "check `{}` is a `{}`", dpp(e, env), dpp(ty, env);
+    "=> {}", dpp(&ret, env)
+)]
 #[throws]
 pub fn synthesize_with_type<M: fmt::Display>(
     e: &Expr<M>,
@@ -220,14 +217,6 @@ pub fn synthesize_with_type<M: fmt::Display>(
     env: &Env,
 ) -> Expr<Never> {
     use Expr::*;
-    log::trace!(
-        "{:indent$}check {} is a {}",
-        "",
-        dpp(e, env),
-        dpp(ty, env),
-        indent = INDENT.get(),
-    );
-    let _ig = IndentGuard::new();
     if let Info(_, e) = e {
         return synthesize_with_type(e, ty, env)?;
     }
@@ -354,17 +343,14 @@ fn literal_sub1(e: &Expr<Never>) -> Expr<Never> {
 
 /// 对表达式 `e` 进行类型检查，返回检查结果。
 /// 第七种 Judgement，见 Figure B.1。
+#[tc_log(
+    "synthesize `{}`", dpp(e, env);
+    "=> ({}, {})", dpp(&ret.0, env), dpp(&ret.1, env)
+)]
 #[throws]
 pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr<Never>) {
     use Expr::BuiltinId as Id;
     use Expr::*;
-    log::trace!(
-        "{:indent$}synthesize {}",
-        "",
-        dpp(e, env),
-        indent = INDENT.get(),
-    );
-    let _ig = IndentGuard::new();
     match e {
         Info(_, e) => synthesize(e, env)?,
         NatLiteral(n) => (bty::nat(), NatLiteral(*n)),
@@ -686,16 +672,13 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
 
 /// 判断并计算表达式是一个类型或 U(n)，返回其类型层级，相当于为 U(n) 特化的 synthesize。
 /// 改进的第四种 Judgement，见 Figure B.1。
+#[tc_log(
+    "resolve `{}` is a type", dpp(e, env);
+    "=> (U {}, {})", ret.0, dpp(&ret.1, env)
+)]
 #[throws]
 pub fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (ULevel, Type<Never>) {
     use Expr::*;
-    log::trace!(
-        "{:indent$}resolve {} is a type",
-        "",
-        dpp(e, env),
-        indent = INDENT.get(),
-    );
-    let _ig = IndentGuard::new();
     // TODO: 改进 El 规则
     match e {
         Info(_, e) => resolve_type(e, env)?,
@@ -776,16 +759,9 @@ fn resolve_type_rule<M: fmt::Display>(ty: &Expr<M>, env: &Env) -> (Type<Never>, 
 /// 检查是否相同类型
 /// 第五种 Judgement，见 Figure B.1。
 #[inline]
+#[tc_log("check `{}` and `{}` are the same type", dpp(ty1, env), dpp(ty2, env))]
 #[throws]
 fn type_check_same(ty1: &Type<Never>, ty2: &Type<Never>, env: &Env) {
-    log::trace!(
-        "{:indent$}check `{}` and `{}` are the same type",
-        "",
-        dpp(ty1, env),
-        dpp(ty2, env),
-        indent = INDENT.get(),
-    );
-    let _ig = IndentGuard::new();
     if !is_type_check_same(ty1, ty2, env) {
         throw!(ErrorKind::NotSame(
             dpp(ty1, env).to_string(),
@@ -840,17 +816,12 @@ pub fn expr_check_same(c1: &Expr<Never>, c2: &Expr<Never>, ct: &Type<Never>, env
     }
 }
 
+#[tc_log(
+    "check `{}` and `{}` are the same `{}`", dpp(c1, env), dpp(c2, env), dpp(ct, env);
+    "=> {}", ret
+)]
 fn is_expr_check_same(c1: &Expr<Never>, c2: &Expr<Never>, ct: &Type<Never>, env: &Env) -> bool {
     use Expr::*;
-    log::trace!(
-        "{:indent$}check `{}` and `{}` are the same `{}`",
-        "",
-        dpp(c1, env),
-        dpp(c2, env),
-        dpp(ct, env),
-        indent = INDENT.get(),
-    );
-    let _ig = IndentGuard::new();
     // TODO: 比较前充分计算 c1、c2、ct
     match (c1, c2) {
         (Identifier(id1), Identifier(id2)) => id1 == id2,

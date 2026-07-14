@@ -1,0 +1,15 @@
+[package]
+name = "pielang-macros"
+version = "0.1.0"
+authors = ["chirsz"]
+edition = "2018"
+description = "Procedural macros for pielang"
+license = "AGPL-3.0"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }
