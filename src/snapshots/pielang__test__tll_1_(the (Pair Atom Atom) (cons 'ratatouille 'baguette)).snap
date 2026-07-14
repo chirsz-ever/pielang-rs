@@ -1,0 +1,7 @@
+---
+source: src/test.rs
+description: "(the (Pair Atom Atom) (cons 'ratatouille 'baguette))"
+expression: output
+---
+type: (Pair Atom Atom)
+expr: (cons 'ratatouille 'baguette)

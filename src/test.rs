@@ -1,4 +1,5 @@
-use crate::type_check as tc;
+use crate::ast::GlobalStatemant::CheckSame;
+use crate::{ast, type_check as tc, Never};
 use crate::{core_ast, scope_check};
 use core_ast::DBIPPrint as dpp;
 
@@ -69,6 +70,36 @@ fn check_synthesize(expr: &str) -> anyhow::Result<String> {
     Ok(output)
 }
 
+fn transform_expression(expr: &ast::Expr) -> Result<core_ast::Expr<Never>, anyhow::Error> {
+    let unfold_expr = core_ast::unfold(expr)?;
+    let dbi = scope_check::to_dbi(&unfold_expr, &scope_check::default_environment())?;
+    Ok(dbi)
+}
+
+fn check_same(expr: &str) -> anyhow::Result<String> {
+    use crate::syntax::GlobalStatemantParser;
+    let parser = GlobalStatemantParser::new();
+    let expr = parser
+        .parse(expr)
+        .map_err(|err| anyhow::anyhow!("{}", err))?;
+    let CheckSame(_, ty, e1, e2) = expr else {
+        anyhow::bail!("Expected check-same statement");
+    };
+    let e1 = transform_expression(&e1)?;
+    let e2 = transform_expression(&e2)?;
+    let ty = transform_expression(&ty)?;
+    let env = tc::Env::new();
+    let (_, ty_o) = tc::resolve_type(&ty, &env)?;
+    let e1_o = tc::synthesize_with_type(&e1, &ty_o, &env)?;
+    let e2_o = tc::synthesize_with_type(&e2, &ty_o, &env)?;
+    let mut output = String::new();
+    match tc::expr_check_same(&e1_o, &e2_o, &ty, &env) {
+        Ok(_) => output += "OK",
+        Err(err) => output += &format!("error: {}", err),
+    }
+    Ok(output)
+}
+
 #[test]
 fn synthesize_tests() -> anyhow::Result<()> {
     let exprs = [
@@ -106,6 +137,32 @@ fn synthesize_tests() -> anyhow::Result<()> {
             description => s,
         }, {
             insta::assert_snapshot!(format!("check_synthesize_{}", s), output);
+        });
+    }
+    Ok(())
+}
+
+#[test]
+fn tlt_tests() -> anyhow::Result<()> {
+    let exprs = [
+        "(the (Pair Atom Atom) (cons 'ratatouille 'baguette))",
+        "(the (Pair Atom Nat) (cons 'ratatouille 0))",
+        "(the (Pair Atom Atom) (cons 'ratatouille 0))",
+        "(check-same (Pair Atom Atom) (cons 'aubergine 'courgette) (cons 'aubergine 'courgette))",
+    ];
+    for s in exprs {
+        let output;
+        if s.starts_with("(the") {
+            output = check_synthesize(s)?;
+        } else if s.starts_with("(check-same") {
+            output = check_same(s)?;
+        } else {
+            todo!();
+        }
+        insta::with_settings!({
+            description => s,
+        }, {
+            insta::assert_snapshot!(format!("tll_1_{}", s), output);
         });
     }
     Ok(())
