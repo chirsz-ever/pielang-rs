@@ -67,8 +67,8 @@ macro_rules! try_match {
 
 macro_rules! match_array {
     (let [$($i:ident),+ $(,)?] = $e:expr, $($on_fail:tt)+) => {
-        let ($($i),+) = if let [$($i),+] = $e {
-            ($($i),+)
+        let ($($i,)+) = if let [$($i),+] = $e {
+            ($($i,)+)
         } else {
             $($on_fail)+
         };
@@ -196,6 +196,7 @@ fn env_get_nth_type(env: &Env, n: usize) -> &Type<Never> {
     env.iter().nth(n).and_then(|(_, ty)| ty.as_ref()).unwrap()
 }
 
+/// 先综合出 e 的类型，再检查其是否与 ty 相同
 #[inline]
 #[throws]
 fn switch_rule<M: fmt::Display>(e: &Expr<M>, ty: &Type<Never>, env: &Env) -> Expr<Never> {
@@ -231,6 +232,21 @@ pub fn synthesize_with_type<M: fmt::Display>(
         return synthesize_with_type(e, ty, env)?;
     }
     match (e, ty) {
+        // 简单情况优化
+        (BuiltinId("sole"), BuiltinId("Trivial")) => BuiltinId("sole"),
+        (AtomLiteral(a), BuiltinId("Atom")) => AtomLiteral(a.clone()),
+        (BuiltinId("zero"), BuiltinId("Nat")) => BuiltinId("zero"),
+        (NatLiteral(n), BuiltinId("Nat")) => NatLiteral(*n),
+        (BuiltinApply("add1", args), BuiltinId("Nat")) => {
+            match_builtin_args!(let [n] = &**args);
+            let n_o = synthesize_with_type(n, &bty::nat(), env)?;
+            BuiltinApply("add1", vec![n_o])
+        }
+        (BuiltinId(ty @ ("Nat" | "Atom" | "Trivial" | "Absurd")), BuiltinApply("U", args))
+            if let [NatLiteral(0)] = **args =>
+        {
+            BuiltinId(ty)
+        }
         // FunI-1
         (LambdaExpr(arg, r), PiExpr(pi_arg, ty_arg, ty_ret)) => {
             let r_o = synthesize_with_type(r, ty_ret, &env_ext(env, arg.into(), &ty_arg))?;
@@ -241,11 +257,11 @@ pub fn synthesize_with_type<M: fmt::Display>(
             };
             LambdaExpr(new_arg, Ref::new(r_o))
         }
-        (BuiltinApply(bf, args), SigmaExpr(arg, ty_a, ty_d)) if &**bf == "cons" => {
+        (BuiltinApply("cons", args), SigmaExpr(arg, ty_a, ty_d)) => {
             match_builtin_args!(let [a, d] = &**args);
             let a_o = synthesize_with_type(a, ty_a, env)?;
             let d_o = synthesize_with_type(d, &substitute_arg(ty_d, arg, &a_o, env), env)?;
-            BuiltinApply(bf, vec![a_o, d_o])
+            BuiltinApply("cons", vec![a_o, d_o])
         }
         (BuiltinApply(bf, args), BuiltinApply(ty_bf, ty_args)) => {
             match (&**bf, &**args, &**ty_bf, &**ty_args) {
@@ -373,6 +389,8 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
         Id("sole") => (bty::trivial(), Id("sole")),
         BuiltinApply(bf, args) => {
             match (&**bf, &**args) {
+                // (U n): (U (add1 n))
+                ("U", [NatLiteral(n)]) => (bty::u_l(NatLiteral(*n + 1)), bty::u_l(NatLiteral(*n))),
                 ("U", [n]) => {
                     let n_o = synthesize_with_type(n, &bty::nat(), env)?;
                     match n_o {
@@ -726,6 +744,7 @@ pub fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (ULevel, Type<Ne
                     (l, bty::equal(ty_o, from_o, to_o))
                 }
                 // UF
+                ("U", [NatLiteral(n)]) => (n + 1, bty::u_l(NatLiteral(*n))),
                 ("U", [n]) => {
                     let n_o = synthesize_with_type(n, &bty::nat(), env)?;
                     match n_o {
@@ -759,6 +778,14 @@ fn resolve_type_rule<M: fmt::Display>(ty: &Expr<M>, env: &Env) -> (Type<Never>, 
 #[inline]
 #[throws]
 fn type_check_same(ty1: &Type<Never>, ty2: &Type<Never>, env: &Env) {
+    log::trace!(
+        "{:indent$}check `{}` and `{}` are the same type",
+        "",
+        dpp(ty1, env),
+        dpp(ty2, env),
+        indent = INDENT.get(),
+    );
+    let _ig = IndentGuard::new();
     if !is_type_check_same(ty1, ty2, env) {
         throw!(ErrorKind::NotSame(
             dpp(ty1, env).to_string(),
@@ -770,14 +797,6 @@ fn type_check_same(ty1: &Type<Never>, ty2: &Type<Never>, env: &Env) {
 
 fn is_type_check_same(ty1: &Type<Never>, ty2: &Type<Never>, env: &Env) -> bool {
     use Expr::*;
-    log::trace!(
-        "{:indent$}check `{}` and `{}` are the same type",
-        "",
-        dpp(ty1, env),
-        dpp(ty2, env),
-        indent = INDENT.get(),
-    );
-    let _ig = IndentGuard::new();
     // TODO: 比较前充分计算 ty1 和 ty2
     match (ty1, ty2) {
         (Identifier(id1), Identifier(id2)) => id1 == id2,
