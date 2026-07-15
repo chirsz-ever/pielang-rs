@@ -1,0 +1,7 @@
+---
+source: src/test.rs
+description: (the U (Pair Atom Atom))
+expression: output
+---
+type: U
+expr: (Pair Atom Atom)

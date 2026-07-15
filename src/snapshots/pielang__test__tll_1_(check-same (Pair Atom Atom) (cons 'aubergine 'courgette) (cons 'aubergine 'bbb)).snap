@@ -1,0 +1,6 @@
+---
+source: src/test.rs
+description: "(check-same (Pair Atom Atom) (cons 'aubergine 'courgette) (cons 'aubergine 'bbb))"
+expression: output
+---
+error: `(cons 'aubergine 'courgette)` and `(cons 'aubergine 'bbb)` are not the same `(Pair Atom Atom)`

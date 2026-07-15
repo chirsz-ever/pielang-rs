@@ -172,10 +172,10 @@ fn substitute(expr: &Expr<Never>, var: &str, e: &Expr<Never>, env: &Env) -> Expr
 
 /// 对常用的 Argument 模式的简写
 #[inline]
-fn substitute_arg(expr: &Expr<Never>, arg: &Argument, e: &Expr<Never>, env: &Env) -> Expr<Never> {
+fn substitute_arg(body: &Expr<Never>, arg: &Argument, e: &Expr<Never>, env: &Env) -> Expr<Never> {
     match arg {
-        Argument::Symbol(sym) => substitute(expr, sym, e, env),
-        Argument::Dummy => expr.clone(),
+        Argument::Symbol(sym) => substitute(body, sym, e, env),
+        Argument::Dummy => body.clone(),
     }
 }
 
@@ -360,8 +360,8 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
             let ty = env_get_nth_type(env, *ident).clone();
             (ty, Identifier(ident.clone()))
         }
-        PiExpr(_arg, ty_a, _ty_r) => resolve_type_rule(ty_a, env)?,
-        SigmaExpr(_arg, ty_a, _ty_d) => resolve_type_rule(ty_a, env)?,
+        PiExpr(_arg, ty_a, _ty_r) => resolve_type_rule(e, env)?,
+        SigmaExpr(_arg, ty_a, _ty_d) => resolve_type_rule(e, env)?,
         // FunE-1
         Apply(f, arg) => {
             let (ty_f, f_o) = synthesize(f, env)?;
@@ -759,7 +759,6 @@ fn resolve_type_rule<M: fmt::Display>(ty: &Expr<M>, env: &Env) -> (Type<Never>, 
 /// 检查是否相同类型
 /// 第五种 Judgement，见 Figure B.1。
 #[inline]
-#[tc_log("check `{}` and `{}` are the same type", dpp(ty1, env), dpp(ty2, env))]
 #[throws]
 fn type_check_same(ty1: &Type<Never>, ty2: &Type<Never>, env: &Env) {
     if !is_type_check_same(ty1, ty2, env) {
@@ -771,6 +770,7 @@ fn type_check_same(ty1: &Type<Never>, ty2: &Type<Never>, env: &Env) {
     }
 }
 
+#[tc_log("check `{}` and `{}` are the same type", dpp(ty1, env), dpp(ty2, env);"=> {}", ret)]
 fn is_type_check_same(ty1: &Type<Never>, ty2: &Type<Never>, env: &Env) -> bool {
     use Expr::*;
     // TODO: 比较前充分计算 ty1 和 ty2
@@ -824,16 +824,19 @@ fn is_expr_check_same(c1: &Expr<Never>, c2: &Expr<Never>, ct: &Type<Never>, env:
     use Expr::*;
     // TODO: 比较前充分计算 c1、c2、ct
     match (c1, c2) {
+        // HypothesisSame
         (Identifier(id1), Identifier(id2)) => id1 == id2,
         (BuiltinApply("U", l1), BuiltinApply("U", l2)) => {
             is_expr_check_same(&l1[0], &l2[0], &bty::nat(), env)
         }
         // 比较自然数，考虑字面量和构造器表示
         (NatLiteral(m), NatLiteral(n)) => m == n,
+        // NatSame-zero
         (BuiltinId("zero"), BuiltinId("zero")) => true,
         (BuiltinId("zero"), NatLiteral(0)) | (NatLiteral(0), BuiltinId("zero")) => true,
         (BuiltinId("zero"), BuiltinId(_) | BuiltinApply(_, _)) => false,
         (BuiltinId(_) | BuiltinApply(_, _), BuiltinId("zero")) => false,
+        // NatSame-add1
         (BuiltinApply("add1", args), NatLiteral(n))
         | (NatLiteral(n), BuiltinApply("add1", args)) => {
             *n > 0 && is_expr_check_same(&args[0], &NatLiteral(n - 1), ct, env)
@@ -841,7 +844,28 @@ fn is_expr_check_same(c1: &Expr<Never>, c2: &Expr<Never>, ct: &Type<Never>, env:
         (BuiltinApply("add1", args), BuiltinApply("add1", args2)) => {
             is_expr_check_same(&args[0], &args2[0], ct, env)
         }
-        (BuiltinId(ty1), BuiltinId(ty2)) if ty1 == ty2 => true,
+        // NatSame-Nat, AtomSame-Atom, ListSame-nil ...
+        (BuiltinId(ty1), BuiltinId(ty2)) => ty1 == ty2,
+        // AtomSame-tick
+        (AtomLiteral(a1), AtomLiteral(a2)) => a1 == a2,
+        // ΣSame-Σ
+        (SigmaExpr(arg1, ty_a1, ty_d1), SigmaExpr(arg2, ty_a2, ty_d2)) => {
+            is_type_check_same(ty_a1, ty_a2, env)
+                && is_type_check_same(ty_d1, ty_d2, &env_ext(env, arg1.into(), ty_a1))
+        }
+        // ΣSame-cons
+        (BuiltinApply("cons", args1), BuiltinApply("cons", args2)) => {
+            let ([a1, d1], [a2, d2], SigmaExpr(arg, ty_a, ty_d)) = (&**args1, &**args2, ct) else {
+                unreachable!()
+            };
+            is_expr_check_same(a1, a2, ty_a, env)
+                && is_expr_check_same(
+                    d1,
+                    d2,
+                    &substitute_arg(ty_d, arg, a1, env),
+                    env,
+                )
+        }
         _ => {
             todo!()
         }

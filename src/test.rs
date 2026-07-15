@@ -145,13 +145,25 @@ fn synthesize_tests() -> anyhow::Result<()> {
 #[test]
 fn tlt_tests() -> anyhow::Result<()> {
     let exprs = [
+        "(the U (Pair Atom Atom))",
         "(the (Pair Atom Atom) (cons 'ratatouille 'baguette))",
         "(the (Pair Atom Nat) (cons 'ratatouille 0))",
         "(the (Pair Atom Atom) (cons 'ratatouille 0))",
         "(check-same (Pair Atom Atom) (cons 'aubergine 'courgette) (cons 'aubergine 'courgette))",
+        "(check-same (Pair Atom Atom) (cons 'aubergine 'courgette) (cons 'aubergine 'bbb))",
+        "(check-same U Atom Atom)",
+        "(check-same U Atom Nat)",
+        "(check-same U (Pair Atom Nat) (Pair Atom Nat))",
+        "(check-same U (Pair Nat Atom) (Pair Atom Nat))",
+        "(check-same Nat 0 0)",
+        "(check-same Nat 0 1)",
+        "(check-same Nat zero 0)",
+        "(check-same Nat zero (add1 zero))",
+        "(check-same Nat 1 (add1 zero))",
     ];
     for s in exprs {
         let output;
+        eprintln!("{} ... ", s);
         if s.starts_with("(the") {
             output = check_synthesize(s)?;
         } else if s.starts_with("(check-same") {

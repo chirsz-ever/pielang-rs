@@ -1,0 +1,6 @@
+---
+source: src/test.rs
+description: (check-same U Atom Atom)
+expression: output
+---
+OK

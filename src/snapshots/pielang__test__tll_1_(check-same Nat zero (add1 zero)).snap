@@ -1,0 +1,6 @@
+---
+source: src/test.rs
+description: (check-same Nat zero (add1 zero))
+expression: output
+---
+error: `zero` and `(add1 zero)` are not the same `Nat`

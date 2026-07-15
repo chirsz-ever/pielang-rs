@@ -1,0 +1,6 @@
+---
+source: src/test.rs
+description: (check-same Nat 1 (add1 zero))
+expression: output
+---
+OK

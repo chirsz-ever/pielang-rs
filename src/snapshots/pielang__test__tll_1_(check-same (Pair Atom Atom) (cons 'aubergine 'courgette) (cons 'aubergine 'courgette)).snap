@@ -1,0 +1,6 @@
+---
+source: src/test.rs
+description: "(check-same (Pair Atom Atom) (cons 'aubergine 'courgette) (cons 'aubergine 'courgette))"
+expression: output
+---
+OK

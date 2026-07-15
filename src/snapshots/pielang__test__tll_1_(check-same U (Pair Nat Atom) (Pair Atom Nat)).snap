@@ -1,0 +1,6 @@
+---
+source: src/test.rs
+description: (check-same U (Pair Nat Atom) (Pair Atom Nat))
+expression: output
+---
+error: `(Pair Nat Atom)` and `(Pair Atom Nat)` are not the same `U`

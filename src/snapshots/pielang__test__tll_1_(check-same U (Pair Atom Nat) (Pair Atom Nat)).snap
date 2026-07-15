@@ -1,0 +1,6 @@
+---
+source: src/test.rs
+description: (check-same U (Pair Atom Nat) (Pair Atom Nat))
+expression: output
+---
+OK
