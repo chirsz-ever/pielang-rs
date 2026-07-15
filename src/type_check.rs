@@ -2,15 +2,77 @@ use crate::{core_ast, utils, Never};
 use core_ast::{
     builtin_type as bty, Argument, DBIPPrint as dpp, Expr, Expr::NatLiteral, Type, ULevel,
 };
-use fehler::{throw, throws};
-use pielang_macros::tc_log;
-use std::{cell::Cell, fmt};
+use std::{cell::{Cell, RefCell}, fmt};
 use utils::{LocatedError, Ref};
 
-// TODO: 改进打印方式，将这里改成 StackMap<Option<Ref<str>>, Type<Never>>
+thread_local! {
+    static INDENT: Cell<usize> = const { Cell::new(0) };
+    /// 入口字符串栈，None 表示该帧已被 tc_log_end! 消费
+    static TC_LOG_ENTRYS: RefCell<Vec<Option<String>>> = RefCell::new(Vec::new());
+}
+
+/// 仿函数宏：在函数体内展开入口日志并创建 IndentGuard。
+///
+/// 用法（仅入口日志）：
+/// ```
+/// tc_log!("fmt {}", args...)
+/// ```
+///
+/// 搭配 tc_log_end! 使用入口+退出日志：
+/// ```
+/// tc_log!("entry fmt", args...);
+/// let ret = ...;
+/// tc_log_end!("=> ret", ret);
+/// ```
+macro_rules! tc_log {
+    ($fmt:literal $(, $arg:expr)* $(,)?) => {
+        {
+            let _tc_log_entry = format!($fmt $(, $arg)*);
+            log::trace!(
+                "{}{}{}",
+                "│".repeat(crate::type_check::INDENT.get()),
+                "┌",
+                _tc_log_entry
+            );
+            TC_LOG_ENTRYS.with(|v| v.borrow_mut().push(Some(_tc_log_entry)));
+        }
+        let _tc_log_guard = crate::type_check::IndentGuard::new();
+    };
+}
+
+/// 搭配 tc_log! 使用的出口日志宏。
+///
+/// 用法：在捕获返回值 ret 后调用，需要再次传入入口 fmt 与入口 args。
+/// ```
+/// tc_log!("entry {}", a);
+/// let ret = body;
+/// tc_log_end!("entry {}", a; "exit {}", ret);
+/// ```
+/// 打印出口日志并标记当前帧的入口字符串已消费（抑制 IndentGuard::drop 的兜底打印）。
+macro_rules! tc_log_end {
+    ($exit_fmt:literal $(, $exit_arg:expr)* $(,)?) => {{
+        let _tc_log_entry = TC_LOG_ENTRYS.with(|v| {
+            v.borrow_mut().last_mut()
+                .and_then(|slot| slot.take())
+        }).expect("tc_log_end! must be called after tc_log!");
+        log::trace!(
+            "{}{}{} {}",
+            "│".repeat(crate::type_check::INDENT.get() - 1),
+            "└",
+            _tc_log_entry,
+            format_args!($exit_fmt $(, $exit_arg)*),
+        );
+    }};
+}
 pub type Env = crate::utils::StackMap<Option<Ref<str>>, Option<Type<Never>>>;
 
 type Error = LocatedError<ErrorKind>;
+
+macro_rules! throw {
+    ($e:expr) => {
+        return Err(Error::from($e))
+    };
+}
 
 #[derive(Debug, Clone)]
 pub enum ErrorKind {
@@ -142,15 +204,11 @@ macro_rules! bapp {
     };
 }
 
-thread_local! {
-    pub static INDENT: Cell<usize> = const { Cell::new(0) };
-}
-
-/// 缩进守卫，进入时增加缩进，退出时自动恢复
-pub struct IndentGuard;
+/// 缩进守卫，进入时增加缩进，退出时自动恢复。
+struct IndentGuard;
 
 impl IndentGuard {
-    pub fn new() -> Self {
+    fn new() -> Self {
         INDENT.set(INDENT.get() + 1);
         IndentGuard
     }
@@ -159,14 +217,28 @@ impl IndentGuard {
 impl std::ops::Drop for IndentGuard {
     fn drop(&mut self) {
         INDENT.set(INDENT.get() - 1);
+        // pop 本帧的槽；Some(entry) 说明 tc_log_end! 未被调用，打印兜底出口日志
+        if let Some(entry) = TC_LOG_ENTRYS.with(|v| v.borrow_mut().pop().flatten()) {
+            log::trace!(
+                "{}{}{}",
+                "│".repeat(crate::type_check::INDENT.get()),
+                "└",
+                entry
+            );
+        }
     }
 }
 
 // TODO: 使用 De Bruijn 方法解决变量名、作用域的各种问题
 
 /// 执行 expr[var/e]，将 expr 中自由出现的 var 替换为 e，e 应当是没有自由变量的。
-#[tc_log("substitute `{}` to `{}` in `{}`", var, dpp(e, env), dpp(expr, env))]
 fn substitute(expr: &Expr<Never>, var: &str, e: &Expr<Never>, env: &Env) -> Expr<Never> {
+    tc_log!(
+        "substitute `{}` to `{}` in `{}`",
+        var,
+        dpp(e, env),
+        dpp(expr, env)
+    );
     todo!()
 }
 
@@ -191,36 +263,37 @@ fn env_get_nth_type(env: &Env, n: usize) -> &Type<Never> {
 
 /// 先综合出 e 的类型，再检查其是否与 ty 相同
 #[inline]
-#[throws]
-fn switch_rule<M: fmt::Display>(e: &Expr<M>, ty: &Type<Never>, env: &Env) -> Expr<Never> {
+fn switch_rule<M: fmt::Display>(
+    e: &Expr<M>,
+    ty: &Type<Never>,
+    env: &Env,
+) -> Result<Expr<Never>, Error> {
     let (ty_e_o, e_o) = synthesize(e, env)?;
     // TODO: 改为 context
     type_check_same(&ty_e_o, &ty, env).map_err(|_| ErrorKind::TypeNotMatch {
         expected: dpp(ty, env).to_string(),
         given: dpp(&ty_e_o, env).to_string(),
     })?;
-    e_o
+    Ok(e_o)
 }
 
 /// 检查表达式 `e` 属于（已检查的）类型 `ty`，返回检查结果。
 /// 第六种 Judgement，见 Figure B.1。
 /// 对于构造式，有唯一相关的类型与之匹配；
 /// 其它表达式则应用 Which 规则：试图综合得出其类型，再将结果与所给类型比较。
-#[tc_log(
-    "check `{}` is a `{}`", dpp(e, env), dpp(ty, env);
-    "=> {}", dpp(&ret, env)
-)]
-#[throws]
 pub fn synthesize_with_type<M: fmt::Display>(
     e: &Expr<M>,
     ty: &Type<Never>,
     env: &Env,
-) -> Expr<Never> {
+) -> Result<Expr<Never>, Error> {
+    tc_log!("check `{}` is a `{}`", dpp(e, env), dpp(ty, env));
+
     use Expr::*;
+
     if let Info(_, e) = e {
-        return synthesize_with_type(e, ty, env)?;
+        return synthesize_with_type(e, ty, env);
     }
-    match (e, ty) {
+    let ret = match (e, ty) {
         // 简单情况优化
         (BuiltinId("sole"), BuiltinId("Trivial")) => BuiltinId("sole"),
         (AtomLiteral(a), BuiltinId("Atom")) => AtomLiteral(a.clone()),
@@ -304,7 +377,10 @@ pub fn synthesize_with_type<M: fmt::Display>(
         }
         // Switch
         _ => switch_rule(e, ty, env)?,
-    }
+    };
+
+    tc_log_end!("=> {}", dpp(&ret, env));
+    Ok(ret)
 }
 
 fn is_literal_zero<M>(e: &Expr<M>) -> bool {
@@ -343,15 +419,16 @@ fn literal_sub1(e: &Expr<Never>) -> Expr<Never> {
 
 /// 对表达式 `e` 进行类型检查，返回检查结果。
 /// 第七种 Judgement，见 Figure B.1。
-#[tc_log(
-    "synthesize `{}`", dpp(e, env);
-    "=> (the {} {})", dpp(&ret.0, env), dpp(&ret.1, env)
-)]
-#[throws]
-pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr<Never>) {
+pub fn synthesize<M: fmt::Display>(
+    e: &Expr<M>,
+    env: &Env,
+) -> Result<(Type<Never>, Expr<Never>), Error> {
+    tc_log!("synthesize `{}`", dpp(e, env));
+
     use Expr::BuiltinId as Id;
     use Expr::*;
-    match e {
+
+    let ret = match e {
         Info(_, e) => synthesize(e, env)?,
         NatLiteral(n) => (bty::nat(), NatLiteral(*n)),
         AtomLiteral(a) => (bty::atom(), AtomLiteral(a.clone())),
@@ -360,8 +437,8 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
             let ty = env_get_nth_type(env, *ident).clone();
             (ty, Identifier(ident.clone()))
         }
-        PiExpr(_arg, ty_a, _ty_r) => resolve_type_rule(e, env)?,
-        SigmaExpr(_arg, ty_a, _ty_d) => resolve_type_rule(e, env)?,
+        PiExpr(_arg, _ty_a, _ty_r) => resolve_type_rule(e, env)?,
+        SigmaExpr(_arg, _ty_a, _ty_d) => resolve_type_rule(e, env)?,
         // FunE-1
         Apply(f, arg) => {
             let (ty_f, f_o) = synthesize(f, env)?;
@@ -667,20 +744,23 @@ pub fn synthesize<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (Type<Never>, Expr
         _ => throw!(ErrorKind::CannotInferType {
             expr: format!("{}", dpp(e, env))
         }),
-    }
+    };
+
+    tc_log_end!("=> (the {} {})", dpp(&ret.0, env), dpp(&ret.1, env));
+    Ok(ret)
 }
 
 /// 判断并计算表达式是一个类型或 U(n)，返回其类型层级，相当于为 U(n) 特化的 synthesize。
 /// 改进的第四种 Judgement，见 Figure B.1。
-#[tc_log(
-    "resolve `{}` is a type", dpp(e, env);
-    "=> (the (U {}) {})", ret.0, dpp(&ret.1, env)
-)]
-#[throws]
-pub fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (ULevel, Type<Never>) {
+pub fn resolve_type<M: fmt::Display>(
+    e: &Expr<M>,
+    env: &Env,
+) -> Result<(ULevel, Type<Never>), Error> {
+    tc_log!("resolve `{}` is a type", dpp(e, env));
+
     use Expr::*;
     // TODO: 改进 El 规则
-    match e {
+    let ret = match e {
         Info(_, e) => resolve_type(e, env)?,
         // FunF-1
         PiExpr(arg, ty_a, ty_r) => {
@@ -745,22 +825,26 @@ pub fn resolve_type<M: fmt::Display>(e: &Expr<M>, env: &Env) -> (ULevel, Type<Ne
         //Literal, Lambda, Identifier, Apply
         // El
         _ => (0, synthesize_with_type(e, &bty::u(), env)?),
-    }
+    };
+
+    tc_log_end!("=> (the (U {}) {})", ret.0, dpp(&ret.1, env));
+    Ok(ret)
 }
 
 // 将 resolve_type 的返回值包装为 (U(n), t_o)
 #[inline]
-#[throws]
-fn resolve_type_rule<M: fmt::Display>(ty: &Expr<M>, env: &Env) -> (Type<Never>, Type<Never>) {
+fn resolve_type_rule<M: fmt::Display>(
+    ty: &Expr<M>,
+    env: &Env,
+) -> Result<(Type<Never>, Type<Never>), Error> {
     let (l, t_o) = resolve_type(ty, env)?;
-    (bty::u_l(NatLiteral(l)), t_o)
+    Ok((bty::u_l(NatLiteral(l)), t_o))
 }
 
 /// 检查是否相同类型
 /// 第五种 Judgement，见 Figure B.1。
 #[inline]
-#[throws]
-fn type_check_same(ty1: &Type<Never>, ty2: &Type<Never>, env: &Env) {
+fn type_check_same(ty1: &Type<Never>, ty2: &Type<Never>, env: &Env) -> Result<(), Error> {
     if !is_type_check_same(ty1, ty2, env) {
         throw!(ErrorKind::NotSame(
             dpp(ty1, env).to_string(),
@@ -768,13 +852,19 @@ fn type_check_same(ty1: &Type<Never>, ty2: &Type<Never>, env: &Env) {
             "(U _)".to_owned(),
         ));
     }
+    Ok(())
 }
 
-#[tc_log("check `{}` and `{}` are the same type", dpp(ty1, env), dpp(ty2, env);"=> {}", ret)]
 fn is_type_check_same(ty1: &Type<Never>, ty2: &Type<Never>, env: &Env) -> bool {
+    tc_log!(
+        "check `{}` and `{}` are the same type",
+        dpp(ty1, env),
+        dpp(ty2, env)
+    );
+
     use Expr::*;
     // TODO: 比较前充分计算 ty1 和 ty2
-    match (ty1, ty2) {
+    let ret = match (ty1, ty2) {
         (Identifier(id1), Identifier(id2)) => id1 == id2,
         (BuiltinId(ty1), BuiltinId(ty2)) => ty1 == ty2,
         (BuiltinApply(f1, args1), BuiltinApply(f2, args2)) => {
@@ -799,14 +889,20 @@ fn is_type_check_same(ty1: &Type<Never>, ty2: &Type<Never>, env: &Env) -> bool {
         _ => {
             todo!()
         }
-    }
+    };
+    tc_log_end!("=> {}", ret);
+    ret
 }
 
 /// 检查是否相同表达式
 /// 认为 `c1: ct` 与 `c2: ct` 已满足
 /// 第八种 Judgement，见 Figure B.1。
-#[throws]
-pub fn expr_check_same(c1: &Expr<Never>, c2: &Expr<Never>, ct: &Type<Never>, env: &Env) {
+pub fn expr_check_same(
+    c1: &Expr<Never>,
+    c2: &Expr<Never>,
+    ct: &Type<Never>,
+    env: &Env,
+) -> Result<(), Error> {
     if !is_expr_check_same(c1, c2, ct, env) {
         throw!(ErrorKind::NotSame(
             dpp(c1, env).to_string(),
@@ -814,16 +910,20 @@ pub fn expr_check_same(c1: &Expr<Never>, c2: &Expr<Never>, ct: &Type<Never>, env
             dpp(ct, env).to_string(),
         ));
     }
+    Ok(())
 }
 
-#[tc_log(
-    "check `{}` and `{}` are the same `{}`", dpp(c1, env), dpp(c2, env), dpp(ct, env);
-    "=> {}", ret
-)]
 fn is_expr_check_same(c1: &Expr<Never>, c2: &Expr<Never>, ct: &Type<Never>, env: &Env) -> bool {
+    tc_log!(
+        "check `{}` and `{}` are the same `{}`",
+        dpp(c1, env),
+        dpp(c2, env),
+        dpp(ct, env)
+    );
+
     use Expr::*;
     // TODO: 比较前充分计算 c1、c2、ct
-    match (c1, c2) {
+    let ret = match (c1, c2) {
         // HypothesisSame
         (Identifier(id1), Identifier(id2)) => id1 == id2,
         (BuiltinApply("U", l1), BuiltinApply("U", l2)) => {
@@ -849,7 +949,7 @@ fn is_expr_check_same(c1: &Expr<Never>, c2: &Expr<Never>, ct: &Type<Never>, env:
         // AtomSame-tick
         (AtomLiteral(a1), AtomLiteral(a2)) => a1 == a2,
         // ΣSame-Σ
-        (SigmaExpr(arg1, ty_a1, ty_d1), SigmaExpr(arg2, ty_a2, ty_d2)) => {
+        (SigmaExpr(arg1, ty_a1, ty_d1), SigmaExpr(_arg2, ty_a2, ty_d2)) => {
             is_type_check_same(ty_a1, ty_a2, env)
                 && is_type_check_same(ty_d1, ty_d2, &env_ext(env, arg1.into(), ty_a1))
         }
@@ -859,17 +959,14 @@ fn is_expr_check_same(c1: &Expr<Never>, c2: &Expr<Never>, ct: &Type<Never>, env:
                 unreachable!()
             };
             is_expr_check_same(a1, a2, ty_a, env)
-                && is_expr_check_same(
-                    d1,
-                    d2,
-                    &substitute_arg(ty_d, arg, a1, env),
-                    env,
-                )
+                && is_expr_check_same(d1, d2, &substitute_arg(ty_d, arg, a1, env), env)
         }
         _ => {
             todo!()
         }
-    }
+    };
+    tc_log_end!("=> {}", ret);
+    ret
 }
 
 pub fn default_environment() -> Env {

@@ -1,6 +1,5 @@
 use crate::{core_ast, utils};
 use core_ast::{Argument, Expr};
-use fehler::throws;
 use std::fmt;
 use utils::{map_result, LocatedError, Ref, DBI};
 
@@ -25,10 +24,9 @@ impl fmt::Display for ErrorKind {
 }
 
 /// 转换为 De Bruijn index 表示
-#[throws]
-pub fn to_dbi<M, 'a>(expr: &Expr<M, Ref<str>>, env: &Env<'a>) -> Expr<M, DBI> {
+pub fn to_dbi<'a, M>(expr: &Expr<M, Ref<str>>, env: &Env<'a>) -> Result<Expr<M, DBI>, Error> {
     use Expr::*;
-    match expr {
+    let ret = match expr {
         Info(_info, expr_inner) => to_dbi(expr_inner, env)?,
         NatLiteral(n) => NatLiteral(*n),
         AtomLiteral(s) => AtomLiteral(s.clone()),
@@ -51,16 +49,19 @@ pub fn to_dbi<M, 'a>(expr: &Expr<M, Ref<str>>, env: &Env<'a>) -> Expr<M, DBI> {
             BuiltinApply(bf, map_result(args.iter(), |arg| to_dbi(arg, env))?)
         }
         BuiltinId(bid) => BuiltinId(bid),
-    }
+    };
+    Ok(ret)
 }
 
-#[throws]
-fn find_index<'a>(ident: &str, env: &Env<'a>) -> DBI {
+fn find_index<'a>(ident: &str, env: &Env<'a>) -> Result<DBI, Error> {
     env.iter()
         .position(|(k, _)| *k == Some(ident))
-        .ok_or_else(|| ErrorKind::UndefinedIdentifier {
-            ident: ident.into(),
-        })?
+        .ok_or_else(|| Error {
+            erk: ErrorKind::UndefinedIdentifier {
+                ident: ident.into(),
+            },
+            loc: None,
+        })
 }
 
 fn append_arg<'a>(env: &Env<'a>, arg: &'a Argument) -> Env<'a> {

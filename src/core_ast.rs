@@ -1,8 +1,11 @@
 use crate::ast;
 use crate::utils::*;
 use crate::Never;
-use fehler::{throw, throws};
 use std::fmt;
+
+macro_rules! throw {
+    ($e:expr) => { return Err($e) };
+}
 
 macro_rules! claim_array {
     ($id:ident $name:ident: [$ty: ty; _] = $value:expr $(;)?) => {
@@ -334,10 +337,9 @@ impl fmt::Display for Argument {
 /// 将 Pi 表达式、Sigma 表达式展开为单层，箭头表达式转换为 Pi 表达式，
 /// Pair 表达式转换为 Sigma 表达式，
 /// 调用分别转化为函数调用和内建调用，并检查内建调用的合法性
-#[throws]
-pub fn unfold(e: &ast::Expr) -> Expr<Never, Ref<str>> {
+pub fn unfold(e: &ast::Expr) -> Result<Expr<Never, Ref<str>>, Error> {
     use ast::Expr::*;
-    match e {
+    let ret = match e {
         Literal(_, ast::Literal::Nat(n)) => Expr::NatLiteral(*n),
         Literal(_, ast::Literal::Atom(atom)) => Expr::AtomLiteral(atom.clone()),
         Identifier(_, id) => match &**id {
@@ -436,18 +438,18 @@ pub fn unfold(e: &ast::Expr) -> Expr<Never, Ref<str>> {
             }
             e
         }
-    }
+    };
+    Ok(ret)
 }
 
 /// 将列表经过柯里化转换为函数调用
-#[throws]
-fn unfold_list(exprs: &[ast::Expr]) -> Expr<Never, Ref<str>> {
+fn unfold_list(exprs: &[ast::Expr]) -> Result<Expr<Never, Ref<str>>, Error> {
     let mut es = exprs.iter();
     let mut f = unfold(es.next().unwrap())?;
     for e in es {
         f = Expr::Apply(Ref::new(f), Ref::new(unfold(e)?));
     }
-    f
+    Ok(f)
 }
 
 /// 检查 expr 中是否直接出现标识符 `var`（不考虑遮蔽）

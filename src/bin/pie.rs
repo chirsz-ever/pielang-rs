@@ -1,13 +1,10 @@
 use core_ast::DBIPPrint as dpp;
-use fehler::throws;
 use pielang::*;
 use rustyline::KeyEvent;
 use std::fs::File;
 use std::io::{self, prelude::*};
 use structopt::StructOpt;
 use type_check as tc;
-
-type Error = anyhow::Error;
 
 type Env = tc::Env;
 
@@ -31,8 +28,7 @@ struct Opt {
     pub exprs: Vec<String>,
 }
 
-#[throws]
-fn main() {
+fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
     let opt = Opt::from_args();
 
@@ -77,6 +73,7 @@ fn main() {
     if should_repl(&opt) {
         repl(opt.check_type_only, &env)?;
     }
+    Ok(())
 }
 
 fn process_expression(expr: &ast::Expr, env: &Env, check_type_only: bool) -> anyhow::Result<()> {
@@ -108,14 +105,12 @@ fn process_check_same(
 }
 
 /// 从简单语法树到核心语法树
-#[throws]
-fn transform_expression(expr: &ast::Expr) -> core_ast::Expr<Never> {
+fn transform_expression(expr: &ast::Expr) -> anyhow::Result<core_ast::Expr<Never>> {
     let unfold_expr = core_ast::unfold(expr)?;
-    scope_check::to_dbi(&unfold_expr, &scope_check::default_environment())?
+    Ok(scope_check::to_dbi(&unfold_expr, &scope_check::default_environment())?)
 }
 
-#[throws]
-fn interpret_file(input: &mut dyn Read, check_type_only: bool, env: &mut Env) {
+fn interpret_file(input: &mut dyn Read, check_type_only: bool, env: &mut Env) -> anyhow::Result<()> {
     use ast::*;
     use GlobalStatemant::*;
 
@@ -145,6 +140,7 @@ fn interpret_file(input: &mut dyn Read, check_type_only: bool, env: &mut Env) {
             }
         }
     }
+    Ok(())
 }
 
 // 有 `-i` 参数或无参数时开启 REPL
@@ -152,8 +148,7 @@ fn should_repl(opt: &Opt) -> bool {
     opt.interactive || (opt.input.is_none() && opt.exprs.is_empty())
 }
 
-#[throws]
-fn repl(check_type_only: bool, env: &Env) {
+fn repl(check_type_only: bool, env: &Env) -> anyhow::Result<()> {
     use ast::GlobalStatemant::*;
     use rustyline::error::ReadlineError;
     use rustyline::history::MemHistory;
@@ -214,4 +209,5 @@ fn repl(check_type_only: bool, env: &Env) {
             }
         }
     }
+    Ok(())
 }
