@@ -14,12 +14,12 @@ thread_local! {
 /// 仿函数宏：在函数体内展开入口日志并创建 IndentGuard。
 ///
 /// 用法（仅入口日志）：
-/// ```
+/// ```notest
 /// tc_log!("fmt {}", args...)
 /// ```
 ///
 /// 搭配 tc_log_end! 使用入口+退出日志：
-/// ```
+/// ```notest
 /// tc_log!("entry fmt", args...);
 /// let ret = ...;
 /// tc_log_end!("=> ret", ret);
@@ -43,7 +43,7 @@ macro_rules! tc_log {
 /// 搭配 tc_log! 使用的出口日志宏。
 ///
 /// 用法：在捕获返回值 ret 后调用，需要再次传入入口 fmt 与入口 args。
-/// ```
+/// ```notest
 /// tc_log!("entry {}", a);
 /// let ret = body;
 /// tc_log_end!("entry {}", a; "exit {}", ret);
