@@ -2,7 +2,10 @@ use crate::{core_ast, utils, Never};
 use core_ast::{
     builtin_type as bty, Argument, DBIPPrint as dpp, Expr, Expr::NatLiteral, Type, ULevel,
 };
-use std::{cell::{Cell, RefCell}, fmt};
+use std::{
+    cell::{Cell, RefCell},
+    fmt,
+};
 use utils::{LocatedError, Ref};
 
 thread_local! {
@@ -64,7 +67,10 @@ macro_rules! tc_log_end {
         );
     }};
 }
-pub type Env = crate::utils::StackMap<Option<Ref<str>>, Option<Type<Never>>>;
+
+/// 变量名 -> (类型, 表达式)
+pub type Env =
+    crate::utils::StackMap<Option<Ref<str>>, (Type<Never>, RefCell<Option<Expr<Never>>>)>;
 
 type Error = LocatedError<ErrorKind>;
 
@@ -253,12 +259,12 @@ fn substitute_arg(body: &Expr<Never>, arg: &Argument, e: &Expr<Never>, env: &Env
 
 #[inline]
 fn env_ext(env: &Env, name: Option<Ref<str>>, ty: &Type<Never>) -> Env {
-    env.insert(name, Some(ty.clone()))
+    env.insert(name, (ty.clone(), Default::default()))
 }
 
 fn env_get_nth_type(env: &Env, n: usize) -> &Type<Never> {
     // 经过作用域检查，保证不会 panic
-    env.iter().nth(n).and_then(|(_, ty)| ty.as_ref()).unwrap()
+    &env.iter().nth(n).unwrap().1 .0
 }
 
 /// 先综合出 e 的类型，再检查其是否与 ty 相同

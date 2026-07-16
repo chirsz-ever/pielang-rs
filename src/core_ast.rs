@@ -4,7 +4,9 @@ use crate::Never;
 use std::fmt;
 
 macro_rules! throw {
-    ($e:expr) => { return Err($e) };
+    ($e:expr) => {
+        return Err($e)
+    };
 }
 
 macro_rules! claim_array {
@@ -50,6 +52,13 @@ pub enum Expr<MetaInfo, Variable = DBI> {
 
     /// 内建调用，如 `(the Type expr)`、`(cons expr expr)`、`(add1 expr)`
     BuiltinApply(&'static str, Vec<Self>),
+}
+
+// FIXME: 为了通过编译
+impl Default for Expr<Never> {
+    fn default() -> Self {
+        Expr::NatLiteral(0)
+    }
 }
 
 pub type Type<M, V = DBI> = Expr<M, V>;
@@ -130,7 +139,7 @@ where
     }
 }
 
-type Env<V> = StackMap<Option<Ref<str>>, Option<V>>;
+type Env<V> = StackMap<Option<Ref<str>>, V>;
 
 /// 包装器，为 De Bruijn 索引表示实现 pretty print
 pub struct DBIPPrint<'a, M, V>(pub &'a Expr<M>, pub &'a Env<V>);
@@ -138,6 +147,7 @@ pub struct DBIPPrint<'a, M, V>(pub &'a Expr<M>, pub &'a Env<V>);
 impl<'a, M, V> fmt::Display for DBIPPrint<'a, M, V>
 where
     M: fmt::Display,
+    V: Default,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     where
@@ -163,8 +173,11 @@ where
             }
         }
 
-        fn ext_env<V>(env: &Env<V>, name: &str) -> Env<V> {
-            env.insert(Some(name.into()), None)
+        fn ext_env<V>(env: &Env<V>, name: &str) -> Env<V>
+        where
+            V: Default,
+        {
+            env.insert(Some(name.into()), <V as Default>::default())
         }
 
         match expr {

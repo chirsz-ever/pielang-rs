@@ -1,4 +1,6 @@
+use anyhow::bail;
 use core_ast::DBIPPrint as dpp;
+use pielang::ast::Symbol;
 use pielang::*;
 use rustyline::KeyEvent;
 use std::fs::File;
@@ -62,22 +64,20 @@ fn main() -> anyhow::Result<()> {
                     process_check_same(&ty, &e1, &e2, &env)?;
                 }
                 _ => {
-                    todo!(
-                        "Only `expression` and `check-same` are supported in command line arguments"
-                    )
+                    bail!("Only `expression` and `check-same` are supported in command line arguments");
                 }
             }
         }
     }
 
     if should_repl(&opt) {
-        repl(opt.check_type_only, &env)?;
+        repl(opt.check_type_only, &mut env)?;
     }
     Ok(())
 }
 
 fn process_expression(expr: &ast::Expr, env: &Env, check_type_only: bool) -> anyhow::Result<()> {
-    let e_dbi = transform_expression(&expr)?;
+    let e_dbi = transform_expression(&expr, env)?;
     if check_type_only {
         let (ty, e_o) = tc::synthesize(&e_dbi, env)?;
         println!("(the {} {})", dpp(&ty, env), dpp(&e_o, env));
@@ -93,9 +93,9 @@ fn process_check_same(
     e2: &ast::Expr,
     env: &Env,
 ) -> anyhow::Result<()> {
-    let e1 = transform_expression(&e1)?;
-    let e2 = transform_expression(&e2)?;
-    let ty = transform_expression(&ty)?;
+    let e1 = transform_expression(&e1, env)?;
+    let e2 = transform_expression(&e2, env)?;
+    let ty = transform_expression(&ty, env)?;
     let (_, ty_o) = tc::resolve_type(&ty, env)?;
     let e1_o = tc::synthesize_with_type(&e1, &ty_o, env)?;
     let e2_o = tc::synthesize_with_type(&e2, &ty_o, env)?;
@@ -104,13 +104,47 @@ fn process_check_same(
     Ok(())
 }
 
-/// 从简单语法树到核心语法树
-fn transform_expression(expr: &ast::Expr) -> anyhow::Result<core_ast::Expr<Never>> {
-    let unfold_expr = core_ast::unfold(expr)?;
-    Ok(scope_check::to_dbi(&unfold_expr, &scope_check::default_environment())?)
+fn process_claim(sym: &str, ty: &ast::Expr, env: &mut Env) -> anyhow::Result<()> {
+    if env
+        .iter()
+        .any(|(k, _)| k.as_ref().is_some_and(|k| &**k == sym))
+    {
+        bail!("cannot reclaim `{}`", sym);
+    }
+    let ty = transform_expression(&ty, env)?;
+    let (_, ty_o) = tc::resolve_type(&ty, env)?;
+    *env = env.insert(Some(sym.into()), (ty_o, Default::default()));
+    Ok(())
 }
 
-fn interpret_file(input: &mut dyn Read, check_type_only: bool, env: &mut Env) -> anyhow::Result<()> {
+fn process_define(sym: &str, expr: &ast::Expr, env: &mut Env) -> anyhow::Result<()> {
+    let Some((_, (ty, expr_ref))) = env
+        .iter()
+        .find(|(k, _)| k.as_ref().is_some_and(|k| &**k == sym))
+    else {
+        bail!("cannot define `{}` before claim", sym);
+    };
+    if expr_ref.borrow().is_some() {
+        bail!("cannot redefine `{}`", sym);
+    }
+    let e_dbi = transform_expression(&expr, env)?;
+    let e_o = tc::synthesize_with_type(&e_dbi, &ty, env)?;
+    *expr_ref.borrow_mut() = Some(e_o);
+    Ok(())
+}
+
+/// 从简单语法树到核心语法树
+fn transform_expression(expr: &ast::Expr, env: &Env) -> anyhow::Result<core_ast::Expr<Never>> {
+    let unfold_expr = core_ast::unfold(expr)?;
+    let env_1 = env.iter().map(|(k, _)| (k.as_deref(), ())).collect();
+    Ok(scope_check::to_dbi(&unfold_expr, &env_1)?)
+}
+
+fn interpret_file(
+    input: &mut dyn Read,
+    check_type_only: bool,
+    env: &mut Env,
+) -> anyhow::Result<()> {
     use ast::*;
     use GlobalStatemant::*;
 
@@ -123,14 +157,10 @@ fn interpret_file(input: &mut dyn Read, check_type_only: bool, env: &mut Env) ->
     for stmt in stats {
         match stmt {
             Claim(_, Symbol(_, sym), ty) => {
-                let e = transform_expression(&ty)?;
-                println!("Claim {}:", sym);
-                println!("{:?}", e);
+                process_claim(&sym, &ty, env)?;
             }
             Define(_, Symbol(_, sym), expr) => {
-                let e = transform_expression(&expr)?;
-                println!("Define {} =", sym);
-                println!("{:?}", e);
+                process_define(&sym, &expr, env)?;
             }
             Expression(expr) => {
                 process_expression(&expr, env, check_type_only)?;
@@ -148,7 +178,7 @@ fn should_repl(opt: &Opt) -> bool {
     opt.interactive || (opt.input.is_none() && opt.exprs.is_empty())
 }
 
-fn repl(check_type_only: bool, env: &Env) -> anyhow::Result<()> {
+fn repl(check_type_only: bool, env: &mut Env) -> anyhow::Result<()> {
     use ast::GlobalStatemant::*;
     use rustyline::error::ReadlineError;
     use rustyline::history::MemHistory;
@@ -175,11 +205,13 @@ fn repl(check_type_only: bool, env: &Env) -> anyhow::Result<()> {
                                         Err(err) => eprintln!("Error: {:?}", err),
                                     }
                                 }
-                                Define(_, _, _) => {
-                                    eprintln!("`define` is not yet supported in REPL.")
+                                Define(_, Symbol(_, sym), expr) => {
+                                    process_define(&sym, &expr, env)
+                                        .unwrap_or_else(|err| eprintln!("Error: {:?}", err));
                                 }
-                                Claim(_, _, _) => {
-                                    eprintln!("`claim` is not yet supported in REPL.")
+                                Claim(_, Symbol(_, sym), ty) => {
+                                    process_claim(&sym, &ty, env)
+                                        .unwrap_or_else(|err| eprintln!("Error: {:?}", err));
                                 }
                                 CheckSame(_, ty, e1, e2) => {
                                     match process_check_same(&ty, &e1, &e2, env) {

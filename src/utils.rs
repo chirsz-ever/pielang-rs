@@ -64,6 +64,16 @@ impl<K, V> StackMap<K, V> {
     }
 }
 
+impl<K, V> std::iter::FromIterator<(K, V)> for StackMap<K, V> {
+    fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
+        let mut ret = StackMap::new();
+        for (k, v) in iter {
+            ret = ret.insert(k, v);
+        }
+        ret
+    }
+}
+
 pub struct StakMapIter<'a, K, V> {
     curr: Option<&'a StackMapNode<K, V>>,
 }
