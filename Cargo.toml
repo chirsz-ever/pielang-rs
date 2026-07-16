@@ -2,6 +2,13 @@
 resolver = "3"
 members = ["pielang", "pielang-cli"]
 
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0"
+authors = ["chirsz"]
+repository = "https://github.com/chirsz-ever/pielang-rs"
+
 [workspace.dependencies]
 anyhow = "1.0"
 log = "0.4"

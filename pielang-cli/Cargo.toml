@@ -1,13 +1,16 @@
 [package]
 name = "pielang-cli"
-version = "0.1.0"
-authors = ["chirsz"]
-edition = "2024"
 description = "Pie language interpreter CLI"
-license = "AGPL-3.0"
+keywords = ["programming-language", "interpreter", "pie", "pielang"]
+categories = ["command-line-utilities", "compilers"]
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
-pielang = { path = "../pielang" }
+pielang = { version = "0.1.0", path = "../pielang" }
 structopt = "0.3"
 rustyline = "18.0"
 anyhow = { workspace = true }

@@ -1,12 +1,13 @@
 [package]
 name = "pielang"
-version = "0.1.0"
-authors = ["chirsz"]
-edition = "2024"
-description = "The interpreter for Pie, a dependent type language"
-license = "AGPL-3.0"
+description = "RIIR Pie, a dependent type language"
 keywords = ["programming-language", "interpreter", "pie", "pielang"]
-categories = ["command-line-utilities", "compilers"]
+categories = ["compilers"]
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [build-dependencies]
 lalrpop = "0.23.1"
