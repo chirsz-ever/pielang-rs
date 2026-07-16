@@ -29,6 +29,8 @@ match {
     // TODO: 更好的方式: { "'" <AtomIdent> => ..., Enclosed<("quote" <AtomIdent>)> => ... }
     r"'\s*[-\w--\d]+" => AtomLit,
     r"quote\s*[-\w--\d]+" => QuoteAtomLit,
+    // 内置关键字
+    r"Atom|Nat|zero|nil|vecnil|Trivial|sole|Absurd|Pair|the|cons|car|cdr|add1|which-Nat|iter-Nat|rec-Nat|ind-Nat|List|::|rec-List|ind-List|Vec|vec::|head|tail|ind-Vec|=|same|symm|cong|replace|trans|ind-=|Either|left|right|ind-Either|ind-Absurd|U" => KEYWORD,
 } else {
     // https://docs.racket-lang.org/reference/reader.html#%28tech._delimiter%29
     // 不可用于标识符的字符：()[]{}",'`;#\|
@@ -63,6 +65,9 @@ pub Expr: Expr = {
     Symbol => {
         let Symbol(span, sym) = <>;
         Expr::Identifier(span, sym)
+    },
+    <l:@L> <kw:KEYWORD> <r:@R> => {
+        Expr::Identifier(Span(l, r), kw.into())
     },
     <l:@L> <lit:Literal> <r:@R> => {
         Expr::Literal(Span(l, r), lit)

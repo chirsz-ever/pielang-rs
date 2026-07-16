@@ -1,5 +1,5 @@
 ---
-source: src/test.rs
+source: pielang/src/test.rs
 description: "(quote 'a)"
 expression: parser.parse(e)
 ---
@@ -8,7 +8,7 @@ Err(
         token: (
             1,
             Token(
-                18,
+                19,
                 "quote",
             ),
             6,
@@ -17,6 +17,7 @@ Err(
             "Ident",
             "AtomLit",
             "NatLit",
+            "KEYWORD",
             "QuoteAtomLit",
             "PI",
             "SIGMA",
