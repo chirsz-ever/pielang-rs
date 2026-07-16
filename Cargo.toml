@@ -1,28 +1,9 @@
-[package]
-name = "pielang"
-version = "0.1.0"
-authors = ["chirsz"]
-edition = "2018"
-description = "The interpreter for Pie, a dependent type language"
-license = "AGPL-3.0"
-keywords = ["programming-language", "interpreter", "pie", "pielang"]
-categories = ["command-line-utilities", "compilers"]
-# readme = 
-# repository = 
+[workspace]
+resolver = "3"
+members = ["pielang", "pielang-cli"]
 
-[build-dependencies]
-lalrpop = "0.23.1"
-
-# TODO: manage binary-only dependencies
-[dependencies]
-lalrpop-util = "0.23.1"
-structopt = "0.3"
-rustyline = "18.0"
+[workspace.dependencies]
 anyhow = "1.0"
-thiserror = "1.0"
 log = "0.4"
 pretty_env_logger = "0.4"
 regex = "1.12.4"
-
-[dev-dependencies]
-insta = { version = "1.48.0", features = ["yaml"] }

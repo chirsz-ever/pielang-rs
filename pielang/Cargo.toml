@@ -1,0 +1,22 @@
+[package]
+name = "pielang"
+version = "0.1.0"
+authors = ["chirsz"]
+edition = "2018"
+description = "The interpreter for Pie, a dependent type language"
+license = "AGPL-3.0"
+keywords = ["programming-language", "interpreter", "pie", "pielang"]
+categories = ["command-line-utilities", "compilers"]
+
+[build-dependencies]
+lalrpop = "0.23.1"
+
+[dependencies]
+lalrpop-util = "0.23.1"
+thiserror = "1.0"
+log = { workspace = true }
+regex = { workspace = true }
+
+[dev-dependencies]
+insta = { version = "1.48.0", features = ["yaml"] }
+anyhow = { workspace = true }

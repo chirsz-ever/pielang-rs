@@ -1,0 +1,15 @@
+[package]
+name = "pielang-cli"
+version = "0.1.0"
+authors = ["chirsz"]
+edition = "2018"
+description = "Pie language interpreter CLI"
+license = "AGPL-3.0"
+
+[dependencies]
+pielang = { path = "../pielang" }
+structopt = "0.3"
+rustyline = "18.0"
+anyhow = { workspace = true }
+log = { workspace = true }
+pretty_env_logger = { workspace = true }

@@ -1,12 +1,11 @@
 use anyhow::bail;
-use core_ast::DBIPPrint as dpp;
 use pielang::ast::Symbol;
-use pielang::*;
+use pielang::core_ast::DBIPPrint as dpp;
 use rustyline::KeyEvent;
 use std::fs::File;
 use std::io::{self, prelude::*};
 use structopt::StructOpt;
-use type_check as tc;
+use pielang::type_check as tc;
 
 type Env = tc::Env;
 
@@ -51,8 +50,8 @@ fn main() -> anyhow::Result<()> {
     }
 
     // 处理 -e 参数
-    let parser = syntax::GlobalStatemantListParser::new();
-    use ast::GlobalStatemant::*;
+    let parser = pielang::syntax::GlobalStatemantListParser::new();
+    use pielang::ast::GlobalStatemant::*;
     for e in &opt.exprs {
         let stats = parser.parse(e).map_err(|err| anyhow::anyhow!("{}", err))?;
         for stat in stats {
@@ -76,7 +75,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn process_expression(expr: &ast::Expr, env: &Env, check_type_only: bool) -> anyhow::Result<()> {
+fn process_expression(expr: &pielang::ast::Expr, env: &Env, check_type_only: bool) -> anyhow::Result<()> {
     let e_dbi = transform_expression(&expr, env)?;
     if check_type_only {
         let (ty, e_o) = tc::synthesize(&e_dbi, env)?;
@@ -88,9 +87,9 @@ fn process_expression(expr: &ast::Expr, env: &Env, check_type_only: bool) -> any
 }
 
 fn process_check_same(
-    ty: &ast::Expr,
-    e1: &ast::Expr,
-    e2: &ast::Expr,
+    ty: &pielang::ast::Expr,
+    e1: &pielang::ast::Expr,
+    e2: &pielang::ast::Expr,
     env: &Env,
 ) -> anyhow::Result<()> {
     let e1 = transform_expression(&e1, env)?;
@@ -104,7 +103,7 @@ fn process_check_same(
     Ok(())
 }
 
-fn process_claim(sym: &str, ty: &ast::Expr, env: &mut Env) -> anyhow::Result<()> {
+fn process_claim(sym: &str, ty: &pielang::ast::Expr, env: &mut Env) -> anyhow::Result<()> {
     if env
         .iter()
         .any(|(k, _)| k.as_ref().is_some_and(|k| &**k == sym))
@@ -117,7 +116,7 @@ fn process_claim(sym: &str, ty: &ast::Expr, env: &mut Env) -> anyhow::Result<()>
     Ok(())
 }
 
-fn process_define(sym: &str, expr: &ast::Expr, env: &mut Env) -> anyhow::Result<()> {
+fn process_define(sym: &str, expr: &pielang::ast::Expr, env: &mut Env) -> anyhow::Result<()> {
     let Some((_, (ty, expr_ref))) = env
         .iter()
         .find(|(k, _)| k.as_ref().is_some_and(|k| &**k == sym))
@@ -133,11 +132,10 @@ fn process_define(sym: &str, expr: &ast::Expr, env: &mut Env) -> anyhow::Result<
     Ok(())
 }
 
-/// 从简单语法树到核心语法树
-fn transform_expression(expr: &ast::Expr, env: &Env) -> anyhow::Result<core_ast::Expr<Never>> {
-    let unfold_expr = core_ast::unfold(expr)?;
+fn transform_expression(expr: &pielang::ast::Expr, env: &Env) -> anyhow::Result<pielang::core_ast::Expr<pielang::Never>> {
+    let unfold_expr = pielang::core_ast::unfold(expr)?;
     let env_1 = env.iter().map(|(k, _)| (k.as_deref(), ())).collect();
-    Ok(scope_check::to_dbi(&unfold_expr, &env_1)?)
+    Ok(pielang::scope_check::to_dbi(&unfold_expr, &env_1)?)
 }
 
 fn interpret_file(
@@ -145,10 +143,9 @@ fn interpret_file(
     check_type_only: bool,
     env: &mut Env,
 ) -> anyhow::Result<()> {
-    use ast::*;
-    use GlobalStatemant::*;
+    use pielang::ast::GlobalStatemant::*;
 
-    let parser = syntax::GrammerParser::new();
+    let parser = pielang::syntax::GrammerParser::new();
     let mut buf = String::new();
     input.read_to_string(&mut buf)?;
     let stats = parser
@@ -179,14 +176,14 @@ fn should_repl(opt: &Opt) -> bool {
 }
 
 fn repl(check_type_only: bool, env: &mut Env) -> anyhow::Result<()> {
-    use ast::GlobalStatemant::*;
+    use pielang::ast::GlobalStatemant::*;
     use rustyline::error::ReadlineError;
     use rustyline::history::MemHistory;
     use rustyline::{Cmd, Config, Editor};
     let conf = Config::builder().auto_add_history(true).build();
     let mut rl = Editor::<(), MemHistory>::with_history(conf, MemHistory::new())?;
     rl.bind_sequence(KeyEvent::ctrl('\\'), Cmd::Insert(1, String::from("λ")));
-    let parser = syntax::GrammerParser::new();
+    let parser = pielang::syntax::GrammerParser::new();
 
     for readline in rl.iter("> ") {
         match readline {
