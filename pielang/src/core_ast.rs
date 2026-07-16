@@ -1,6 +1,6 @@
+use crate::Never;
 use crate::ast;
 use crate::utils::*;
-use crate::Never;
 use std::fmt;
 
 macro_rules! throw {

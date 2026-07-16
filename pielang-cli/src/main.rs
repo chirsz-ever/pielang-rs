@@ -1,11 +1,11 @@
 use anyhow::bail;
 use pielang::ast::Symbol;
 use pielang::core_ast::DBIPPrint as dpp;
+use pielang::type_check as tc;
 use rustyline::KeyEvent;
 use std::fs::File;
 use std::io::{self, prelude::*};
 use structopt::StructOpt;
-use pielang::type_check as tc;
 
 type Env = tc::Env;
 
@@ -63,7 +63,9 @@ fn main() -> anyhow::Result<()> {
                     process_check_same(&ty, &e1, &e2, &env)?;
                 }
                 _ => {
-                    bail!("Only `expression` and `check-same` are supported in command line arguments");
+                    bail!(
+                        "Only `expression` and `check-same` are supported in command line arguments"
+                    );
                 }
             }
         }
@@ -75,7 +77,11 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn process_expression(expr: &pielang::ast::Expr, env: &Env, check_type_only: bool) -> anyhow::Result<()> {
+fn process_expression(
+    expr: &pielang::ast::Expr,
+    env: &Env,
+    check_type_only: bool,
+) -> anyhow::Result<()> {
     let e_dbi = transform_expression(&expr, env)?;
     if check_type_only {
         let (ty, e_o) = tc::synthesize(&e_dbi, env)?;
@@ -132,7 +138,10 @@ fn process_define(sym: &str, expr: &pielang::ast::Expr, env: &mut Env) -> anyhow
     Ok(())
 }
 
-fn transform_expression(expr: &pielang::ast::Expr, env: &Env) -> anyhow::Result<pielang::core_ast::Expr<pielang::Never>> {
+fn transform_expression(
+    expr: &pielang::ast::Expr,
+    env: &Env,
+) -> anyhow::Result<pielang::core_ast::Expr<pielang::Never>> {
     let unfold_expr = pielang::core_ast::unfold(expr)?;
     let env_1 = env.iter().map(|(k, _)| (k.as_deref(), ())).collect();
     Ok(pielang::scope_check::to_dbi(&unfold_expr, &env_1)?)

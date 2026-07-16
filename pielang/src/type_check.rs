@@ -1,6 +1,6 @@
-use crate::{core_ast, utils, Never};
+use crate::{Never, core_ast, utils};
 use core_ast::{
-    builtin_type as bty, Argument, DBIPPrint as dpp, Expr, Expr::NatLiteral, Type, ULevel,
+    Argument, DBIPPrint as dpp, Expr, Expr::NatLiteral, Type, ULevel, builtin_type as bty,
 };
 use std::{
     cell::{Cell, RefCell},
@@ -106,7 +106,7 @@ impl fmt::Display for ErrorKind {
 
 macro_rules! try_match {
     (let BuiltinApply($bf:literal , [$($i:ident),+ $(,)?]) = $e:expr; $env:expr) => {
-        let ($($i,)+) = if let BuiltinApply(ref bf, ref args) = $e {
+        let ($($i,)+) = if let BuiltinApply(bf, args) = $e {
             if let ($bf, [$($i),+]) = (&**bf, &**args) {
                 ($($i,)+)
             } else {
@@ -264,7 +264,7 @@ fn env_ext(env: &Env, name: Option<Ref<str>>, ty: &Type<Never>) -> Env {
 
 fn env_get_nth_type(env: &Env, n: usize) -> &Type<Never> {
     // 经过作用域检查，保证不会 panic
-    &env.iter().nth(n).unwrap().1 .0
+    &env.iter().nth(n).unwrap().1.0
 }
 
 /// 先综合出 e 的类型，再检查其是否与 ty 相同

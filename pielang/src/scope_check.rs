@@ -1,7 +1,7 @@
 use crate::{core_ast, utils};
 use core_ast::{Argument, Expr};
 use std::fmt;
-use utils::{map_result, LocatedError, Ref, DBI};
+use utils::{DBI, LocatedError, Ref, map_result};
 
 pub type Env<'a> = utils::StackMap<Option<&'a str>, ()>;
 

@@ -1,5 +1,5 @@
 use crate::ast::GlobalStatemant::CheckSame;
-use crate::{ast, type_check as tc, Never};
+use crate::{Never, ast, type_check as tc};
 use crate::{core_ast, scope_check};
 use core_ast::DBIPPrint as dpp;
 
