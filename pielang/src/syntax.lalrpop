@@ -32,13 +32,13 @@ pub Grammer = HeaderComment* <GlobalStatemantList>;
 
 pub GlobalStatemantList = <GlobalStatemant*>;
 
-Ident: Ident = {
+Ident: Ident<'input> = {
     <l:@L> <ident:IDENT> <r:@L> => {
         Ident(Span(l, r), ident.into())
     }
 }
 
-pub GlobalStatemant: GlobalStatemant = {
+pub GlobalStatemant: GlobalStatemant<'input> = {
     <e:Expr> => {
         use Expr::*;
         use GlobalStatemant::*;
@@ -54,7 +54,7 @@ pub GlobalStatemant: GlobalStatemant = {
     }
 }
 
-pub Expr: Expr = {
+pub Expr: Expr<'input> = {
     Ident => <>.into(),
     // Nature Number: 0, 1, 2 ...
     <l:@L> <n:NAT_LIT> <r:@R> =>? {

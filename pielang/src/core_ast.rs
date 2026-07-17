@@ -348,13 +348,13 @@ pub fn unfold(e: &ast::Expr) -> Result<Expr<Never, Ref<str>>, Error> {
     use ast::Expr::*;
     let ret = match e {
         NatLit(_, n) => Expr::NatLiteral(*n),
-        AtomLit(_, atom) => Expr::AtomLiteral(atom.clone()),
+        AtomLit(_, atom) => Expr::AtomLiteral((**atom).into()),
         Ident(_, id) => match &**id {
             "U" => Expr::BuiltinApply("U", vec![Expr::NatLiteral(0)]),
             _ if let Some(id) = ast::PIE_BUILTIN_SINGLETONS.iter().find(|d| **d == &**id) => {
                 Expr::BuiltinId(id)
             }
-            _ => Expr::Identifier(id.clone()),
+            _ => Expr::Identifier((**id).into()),
         },
         App(loc, exprs) => match &**exprs {
             [Ident(_, f), args @ ..]
@@ -396,7 +396,7 @@ pub fn unfold(e: &ast::Expr) -> Result<Expr<Never, Ref<str>>, Error> {
             let mut e = unfold(body)?;
             // 注意从后向前的顺序
             for ast::Ident(_, sym) in args.iter().rev() {
-                e = Expr::LambdaExpr(self::Argument::Symbol(sym.clone()), Ref::new(e));
+                e = Expr::LambdaExpr(self::Argument::Symbol((*sym).into()), Ref::new(e));
             }
             e
         }
@@ -410,7 +410,7 @@ pub fn unfold(e: &ast::Expr) -> Result<Expr<Never, Ref<str>>, Error> {
             for (i, (ast::Ident(_, sym), _)) in args.iter().enumerate().rev() {
                 let has_body_ref = occurs(&e, sym) || types[i + 1..].iter().any(|t| occurs(t, sym));
                 let arg = if has_body_ref {
-                    self::Argument::Symbol(sym.clone())
+                    self::Argument::Symbol((*sym).into())
                 } else {
                     self::Argument::Dummy
                 };
@@ -438,7 +438,7 @@ pub fn unfold(e: &ast::Expr) -> Result<Expr<Never, Ref<str>>, Error> {
             for (i, (ast::Ident(_, sym), _)) in args.iter().enumerate().rev() {
                 let has_body_ref = occurs(&e, sym) || types[i + 1..].iter().any(|t| occurs(t, sym));
                 let arg = if has_body_ref {
-                    self::Argument::Symbol(sym.clone())
+                    self::Argument::Symbol((*sym).into())
                 } else {
                     self::Argument::Dummy
                 };

@@ -1,63 +1,63 @@
 use crate::utils::{Ref, Span};
 
-/// 顶层语句允许 define 语句、claim 语句和表达式。
+/// 顶层语句允许 define 语句、claim 语句, check-same 语句和表达式。
 #[derive(Debug, Clone)]
-pub enum GlobalStatemant {
+pub enum GlobalStatemant<'a> {
     /// `(claim varname type)`
-    Claim(Span, Ident, Type),
+    Claim(Span, Ident<'a>, Type<'a>),
 
     /// `(define varname expression)`
-    Define(Span, Ident, Expr),
+    Define(Span, Ident<'a>, Expr<'a>),
 
     /// `(check-same type expression expression)`
-    CheckSame(Span, Expr, Expr, Expr),
+    CheckSame(Span, Expr<'a>, Expr<'a>, Expr<'a>),
 
     /// 表达式
-    Expression(Expr),
+    Expression(Expr<'a>),
 }
 
 /// 包含位置信息的一个符号
 #[derive(Debug, Clone)]
-pub struct Ident(pub Span, pub Ref<str>);
+pub struct Ident<'a>(pub Span, pub &'a str);
 
 /// 表达式包含位置信息
 #[derive(Debug, Clone)]
-pub enum Expr {
+pub enum Expr<'a> {
     /// 字面量，表示一个值
     NatLit(Span, u64),
 
-    AtomLit(Span, Ref<str>),
+    AtomLit(Span, &'a str),
 
     /// 标识符，可以绑定到变量、函数、类型等
-    Ident(Span, Ref<str>),
+    Ident(Span, &'a str),
 
     /// 函数调用、值的构造（introduce）、解构（eliminate），以及 the 表达式
-    App(Span, Vec<Expr>),
+    App(Span, Vec<Expr<'a>>),
 
     /// 以下为一些特殊语法项
 
     /// `(λ (ident+) expr)`
-    LambdaExpr(Span, Vec<Ident>, Ref<Expr>),
+    LambdaExpr(Span, Vec<Ident<'a>>, Ref<Expr<'a>>),
 
     /// `(Π ((ident expr)+) expr)`
-    PiExpr(Span, Vec<(Ident, Type)>, Ref<Expr>),
+    PiExpr(Span, Vec<(Ident<'a>, Type<'a>)>, Ref<Expr<'a>>),
 
     /// `(→ expr+ expr)`
-    ArrowExpr(Span, Vec<Type>),
+    ArrowExpr(Span, Vec<Type<'a>>),
 
     /// `(Σ ((ident expr)+) expr)`
-    SigmaExpr(Span, Vec<(Ident, Type)>, Ref<Expr>),
+    SigmaExpr(Span, Vec<(Ident<'a>, Type<'a>)>, Ref<Expr<'a>>),
 }
 
-impl From<Ident> for Expr {
-    fn from(value: Ident) -> Self {
+impl<'a> From<Ident<'a>> for Expr<'a> {
+    fn from(value: Ident<'a>) -> Self {
         let Ident(span, id) = value;
         Expr::Ident(span, id)
     }
 }
 
 /// 类型也是表达式
-pub type Type = Expr;
+pub type Type<'a> = Expr<'a>;
 
 /// Pie 的 Atom 由字母或者横线组成
 pub static RE_ATOM_IDENT: std::sync::LazyLock<regex::Regex> =
