@@ -42,7 +42,7 @@ fn main() -> anyhow::Result<()> {
             stdin_read = io::stdin();
             &mut stdin_read
         } else {
-            file_read = File::open(&input_arg)?;
+            file_read = File::open(input_arg)?;
             &mut file_read
         };
 
@@ -82,7 +82,7 @@ fn process_expression(
     env: &Env,
     check_type_only: bool,
 ) -> anyhow::Result<()> {
-    let e_dbi = transform_expression(&expr, env)?;
+    let e_dbi = transform_expression(expr, env)?;
     if check_type_only {
         let (ty, e_o) = tc::synthesize(&e_dbi, env)?;
         println!("(the {} {})", dpp(&ty, env), dpp(&e_o, env));
@@ -98,9 +98,9 @@ fn process_check_same(
     e2: &pielang::ast::Expr,
     env: &Env,
 ) -> anyhow::Result<()> {
-    let e1 = transform_expression(&e1, env)?;
-    let e2 = transform_expression(&e2, env)?;
-    let ty = transform_expression(&ty, env)?;
+    let e1 = transform_expression(e1, env)?;
+    let e2 = transform_expression(e2, env)?;
+    let ty = transform_expression(ty, env)?;
     let (_, ty_o) = tc::resolve_type(&ty, env)?;
     let e1_o = tc::synthesize_with_type(&e1, &ty_o, env)?;
     let e2_o = tc::synthesize_with_type(&e2, &ty_o, env)?;
@@ -116,7 +116,7 @@ fn process_claim(sym: &str, ty: &pielang::ast::Expr, env: &mut Env) -> anyhow::R
     {
         bail!("cannot reclaim `{}`", sym);
     }
-    let ty = transform_expression(&ty, env)?;
+    let ty = transform_expression(ty, env)?;
     let (_, ty_o) = tc::resolve_type(&ty, env)?;
     *env = env.insert(Some(sym.into()), (ty_o, Default::default()));
     Ok(())
@@ -132,8 +132,8 @@ fn process_define(sym: &str, expr: &pielang::ast::Expr, env: &mut Env) -> anyhow
     if expr_ref.borrow().is_some() {
         bail!("cannot redefine `{}`", sym);
     }
-    let e_dbi = transform_expression(&expr, env)?;
-    let e_o = tc::synthesize_with_type(&e_dbi, &ty, env)?;
+    let e_dbi = transform_expression(expr, env)?;
+    let e_o = tc::synthesize_with_type(&e_dbi, ty, env)?;
     *expr_ref.borrow_mut() = Some(e_o);
     Ok(())
 }
@@ -163,10 +163,10 @@ fn interpret_file(
     for stmt in stats {
         match stmt {
             Claim(_, Ident(_, sym), ty) => {
-                process_claim(&sym, &ty, env)?;
+                process_claim(sym, &ty, env)?;
             }
             Define(_, Ident(_, sym), expr) => {
-                process_define(&sym, &expr, env)?;
+                process_define(sym, &expr, env)?;
             }
             Expression(expr) => {
                 process_expression(&expr, env, check_type_only)?;
@@ -212,11 +212,11 @@ fn repl(check_type_only: bool, env: &mut Env) -> anyhow::Result<()> {
                                     }
                                 }
                                 Define(_, Ident(_, sym), expr) => {
-                                    process_define(&sym, &expr, env)
+                                    process_define(sym, &expr, env)
                                         .unwrap_or_else(|err| eprintln!("Error: {:?}", err));
                                 }
                                 Claim(_, Ident(_, sym), ty) => {
-                                    process_claim(&sym, &ty, env)
+                                    process_claim(sym, &ty, env)
                                         .unwrap_or_else(|err| eprintln!("Error: {:?}", err));
                                 }
                                 CheckSame(_, ty, e1, e2) => {

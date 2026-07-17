@@ -11,7 +11,7 @@ use utils::{LocatedError, Ref};
 thread_local! {
     static INDENT: Cell<usize> = const { Cell::new(0) };
     /// 入口字符串栈，None 表示该帧已被 tc_log_end! 消费
-    static TC_LOG_ENTRYS: RefCell<Vec<Option<String>>> = RefCell::new(Vec::new());
+    static TC_LOG_ENTRYS: RefCell<Vec<Option<String>>> = const { RefCell::new(Vec::new()) };
 }
 
 /// 仿函数宏：在函数体内展开入口日志并创建 IndentGuard。
@@ -280,7 +280,7 @@ fn switch_rule<M: fmt::Display>(
 ) -> Result<Expr<Never>, Error> {
     let (ty_e_o, e_o) = synthesize(e, env)?;
     // TODO: 改为 context
-    type_check_same(&ty_e_o, &ty, env).map_err(|_| ErrorKind::TypeNotMatch {
+    type_check_same(&ty_e_o, ty, env).map_err(|_| ErrorKind::TypeNotMatch {
         expected: dpp(ty, env).to_string(),
         given: dpp(&ty_e_o, env).to_string(),
     })?;
@@ -328,7 +328,7 @@ pub fn synthesize_with_type<M: fmt::Display>(
         }
         // FunI-1
         (LambdaExpr(arg, r), PiExpr(pi_arg, ty_arg, ty_ret)) => {
-            let r_o = synthesize_with_type(r, ty_ret, &env_ext(env, arg.into(), &ty_arg))?;
+            let r_o = synthesize_with_type(r, ty_ret, &env_ext(env, arg.into(), ty_arg))?;
             let new_arg = match (arg, pi_arg) {
                 (Argument::Symbol(sym), _) => Argument::Symbol(sym.clone()),
                 (Argument::Dummy, Argument::Symbol(sym)) => Argument::Symbol(sym.clone()),
@@ -452,7 +452,7 @@ pub fn synthesize<M: fmt::Display>(
         // Hypothesis
         Identifier(ident) => {
             let ty = env_get_nth_type(env, *ident).clone();
-            (ty, Identifier(ident.clone()))
+            (ty, Identifier(*ident))
         }
         PiExpr(_arg, _ty_a, _ty_r) => resolve_type_rule(e, env)?,
         SigmaExpr(_arg, _ty_a, _ty_d) => resolve_type_rule(e, env)?,
@@ -460,8 +460,8 @@ pub fn synthesize<M: fmt::Display>(
         Apply(f, arg) => {
             let (ty_f, f_o) = synthesize(f, env)?;
             try_match!(let PiExpr(var, ty_arg, ty_ret) = &ty_f; &env);
-            let arg_o = synthesize_with_type(arg, &ty_arg, env)?;
-            let ty = substitute_arg(&ty_ret, &var, &arg_o, env);
+            let arg_o = synthesize_with_type(arg, ty_arg, env)?;
+            let ty = substitute_arg(ty_ret, var, &arg_o, env);
             (ty, app!(f_o, arg_o))
         }
         Id(ty @ ("Atom" | "Nat" | "Trivial" | "Absurd")) => (bty::u(), Id(ty)),
@@ -506,7 +506,7 @@ pub fn synthesize<M: fmt::Display>(
                 ("head", [v]) => {
                     let (ty_v, v_o) = synthesize(v, env)?;
                     try_match! { let BuiltinApply("Vec", [ty_e, len]) = &ty_v; env };
-                    if is_literal_add1(&len) {
+                    if is_literal_add1(len) {
                         (ty_e.clone(), BuiltinApply(bf, vec![v_o]))
                     } else {
                         throw!(ErrorKind::TypeNotMatch {
@@ -519,7 +519,7 @@ pub fn synthesize<M: fmt::Display>(
                 ("tail", [v]) => {
                     let (ty_v, v_o) = synthesize(v, env)?;
                     try_match! { let BuiltinApply("Vec", [ty_e, len]) = &ty_v; env };
-                    if is_literal_add1(&len) {
+                    if is_literal_add1(len) {
                         let ty_subv = bty::vec(ty_e.clone(), literal_sub1(len));
                         (ty_subv, BuiltinApply(bf, vec![v_o]))
                     } else {
@@ -633,7 +633,7 @@ pub fn synthesize<M: fmt::Display>(
                     let l_o = synthesize_with_type(l, &bty::nat(), env)?;
                     let (ty_t, t_o) = synthesize(t, env)?;
                     try_match! { let BuiltinApply("Vec", [ty_e, n]) = &ty_t; env }
-                    expr_check_same(&l_o, &n, &bty::nat(), env)?;
+                    expr_check_same(&l_o, n, &bty::nat(), env)?;
                     let ty_m = pi!(
                         bty::nat(),
                         bapp!("Vec", ty_e.clone(), Identifier(0)),
@@ -782,7 +782,7 @@ pub fn resolve_type<M: fmt::Display>(
         // FunF-1
         PiExpr(arg, ty_a, ty_r) => {
             let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
-            let (l_r, ty_r_o) = resolve_type(ty_r, &env_ext(&env, arg.into(), &ty_a_o))?;
+            let (l_r, ty_r_o) = resolve_type(ty_r, &env_ext(env, arg.into(), &ty_a_o))?;
             (
                 std::cmp::max(l_a, l_r),
                 PiExpr(arg.clone(), Ref::new(ty_a_o), Ref::new(ty_r_o)),
@@ -791,7 +791,7 @@ pub fn resolve_type<M: fmt::Display>(
         // SigmaF-1
         SigmaExpr(arg, ty_a, ty_d) => {
             let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
-            let (l_d, ty_d_o) = resolve_type(ty_d, &env_ext(&env, arg.into(), &ty_a_o))?;
+            let (l_d, ty_d_o) = resolve_type(ty_d, &env_ext(env, arg.into(), &ty_a_o))?;
             (
                 std::cmp::max(l_a, l_d),
                 SigmaExpr(arg.clone(), Ref::new(ty_a_o), Ref::new(ty_d_o)),
@@ -810,7 +810,7 @@ pub fn resolve_type<M: fmt::Display>(
                 // ΣF-Pair
                 ("Pair", [ty_a, ty_d]) => {
                     let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
-                    let (l_d, ty_d_o) = resolve_type(ty_d, &env_ext(&env, None, &ty_a_o))?;
+                    let (l_d, ty_d_o) = resolve_type(ty_d, &env_ext(env, None, &ty_a_o))?;
                     (
                         std::cmp::max(l_a, l_d),
                         SigmaExpr(Argument::Dummy, Ref::new(ty_a_o), Ref::new(ty_d_o)),

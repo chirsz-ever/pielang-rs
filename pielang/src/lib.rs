@@ -10,7 +10,7 @@ use lalrpop_util::lalrpop_mod;
 /// Used as a phantom type parameter where no meta-info is needed.
 pub type Never = std::convert::Infallible;
 
-lalrpop_mod!(#[allow(clippy::all)] #[allow(warnings)] pub syntax);
+lalrpop_mod!(#[allow(clippy::type_complexity)] pub syntax);
 
 pub mod ast;
 pub mod core_ast;

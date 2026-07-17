@@ -129,7 +129,7 @@ pub fn to_statement<'a>(e: Expr<'a>) -> Result<GlobalStatemant<'a>, LocatedError
                 let Ident(span_id, id) = id else {
                     return Err(LocatedError {
                         loc: Some(get_span(&id)),
-                        erk: format!("claim: expect an identifier as the first argument"),
+                        erk: "claim: expect an identifier as the first argument".to_string(),
                     });
                 };
                 Claim(span, crate::ast::Ident(span_id, id), ty)
@@ -145,7 +145,7 @@ pub fn to_statement<'a>(e: Expr<'a>) -> Result<GlobalStatemant<'a>, LocatedError
                 let Ident(span_id, id) = id else {
                     return Err(LocatedError {
                         loc: Some(get_span(&id)),
-                        erk: format!("define: expect an identifier as the first argument"),
+                        erk: "define: expect an identifier as the first argument".to_string(),
                     });
                 };
                 Define(span, crate::ast::Ident(span_id, id), body)

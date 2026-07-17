@@ -84,12 +84,10 @@ where
             PiExpr(arg, ty, body) => {
                 if matches!(arg, Argument::Dummy) {
                     write!(f, "(→ {}", ty)?;
-                    let mut current: &Self = &**body;
+                    let mut current: &Self = body;
                     loop {
                         match current {
-                            PiExpr(next_arg, next_ty, next_body)
-                                if matches!(next_arg, Argument::Dummy) =>
-                            {
+                            PiExpr(Argument::Dummy, next_ty, next_body) => {
                                 write!(f, " {}", next_ty)?;
                                 current = &**next_body;
                             }
@@ -158,7 +156,7 @@ where
                 let mut n = 0;
                 while env
                     .iter()
-                    .any(|(y, _)| y.as_ref().map_or(false, |y| **y == *x))
+                    .any(|(y, _)| y.as_ref().is_some_and(|y| **y == *x))
                 {
                     x = format!("x{}", n);
                     n += 1;
@@ -246,8 +244,8 @@ where
                 }
             }
             Apply(fun, arg) => {
-                let fun = DBIPPrint(&**fun, &env);
-                let arg = DBIPPrint(&**arg, &env);
+                let fun = DBIPPrint(&**fun, env);
+                let arg = DBIPPrint(&**arg, env);
                 write!(f, "({} {})", fun, arg)
             }
             BuiltinId(id) => {
@@ -260,7 +258,7 @@ where
                 _ => {
                     write!(f, "({}", bf)?;
                     for arg in args {
-                        write!(f, " {}", DBIPPrint(arg, &env))?;
+                        write!(f, " {}", DBIPPrint(arg, env))?;
                     }
                     write!(f, ")")
                 }
@@ -366,7 +364,7 @@ pub fn unfold(e: &ast::Expr) -> Result<Expr<Never, Ref<str>>, Error> {
                     Expr::BuiltinApply(bid, map_result(args, unfold)?)
                 } else {
                     throw!(Error {
-                        loc: Some(loc.clone()),
+                        loc: Some(*loc),
                         erk: ErrorKind::IllegalArgumentNumber {
                             caller: f.to_string(),
                             valid_argc: *argc,
@@ -382,7 +380,7 @@ pub fn unfold(e: &ast::Expr) -> Result<Expr<Never, Ref<str>>, Error> {
             ),
             [Ident(loc, f), args @ ..] if &**f == "Pair" => {
                 throw!(Error {
-                    loc: Some(loc.clone()),
+                    loc: Some(*loc),
                     erk: ErrorKind::IllegalArgumentNumber {
                         caller: f.to_string(),
                         valid_argc: 2,

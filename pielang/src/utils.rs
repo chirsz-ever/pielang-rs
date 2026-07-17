@@ -1,5 +1,3 @@
-use std::borrow::Borrow;
-use std::cmp::Eq;
 use std::fmt;
 use thiserror::Error;
 
@@ -33,21 +31,6 @@ struct StackMapNode<K, V> {
 impl<K, V> StackMap<K, V> {
     pub const fn new() -> StackMap<K, V> {
         StackMap(None)
-    }
-
-    pub fn get<Q: ?Sized>(&self, x: &Q) -> Option<&V>
-    where
-        K: Borrow<Q>,
-        Q: Eq,
-    {
-        let mut next = &self.0;
-        while let Some(node) = next {
-            if node.kv.0.borrow() == x {
-                return Some(&node.kv.1);
-            }
-            next = &node.next;
-        }
-        None
     }
 
     pub fn insert(&self, k: K, v: V) -> StackMap<K, V> {
@@ -101,12 +84,9 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "{{")?;
         let mut node = &self.0;
-        match node {
-            Some(head) => {
-                write!(f, "{}: {}", head.kv.0, head.kv.1)?;
-                node = &head.next;
-            }
-            None => {}
+        if let Some(head) = node {
+            write!(f, "{}: {}", head.kv.0, head.kv.1)?;
+            node = &head.next;
         }
         while let Some(cur) = node {
             write!(f, " ,{}: {}", cur.kv.0, cur.kv.1)?;
