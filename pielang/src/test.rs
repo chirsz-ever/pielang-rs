@@ -165,6 +165,7 @@ fn tlt_tests() -> anyhow::Result<()> {
         "(check-same Nat zero 0)",
         "(check-same Nat zero (add1 zero))",
         "(check-same Nat 1 (add1 zero))",
+        "(check-same Nat (add1 zero) (add1 zero))",
     ];
     for s in exprs {
         let output;
