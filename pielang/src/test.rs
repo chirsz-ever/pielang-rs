@@ -125,6 +125,9 @@ fn synthesize_tests() -> anyhow::Result<()> {
         "(the U Absurd)",
         "(the (→ Absurd Nat) (λ (nope) (ind-Absurd nope Nat)))",
         "(the (→ Absurd Nat) (λ (nope) (ind-Absurd (the Absurd nope) Nat)))",
+        // lambda
+        "(the (→ Nat Nat) (λ (x) x))",
+        "(the (→ Nat Nat) (λ (x) (add1 x)))",
         // Error cases
         "(the Nat 'a)",
         "(the Atom zero)",
@@ -166,6 +169,10 @@ fn tlt_tests() -> anyhow::Result<()> {
         "(check-same Nat zero (add1 zero))",
         "(check-same Nat 1 (add1 zero))",
         "(check-same Nat (add1 zero) (add1 zero))",
+        "(check-same (→ Nat Nat) (λ (x) x) (λ (x) x))",
+        "(check-same (→ Nat Nat) (λ (x) x) (λ (y) y))",
+        "(check-same (→ Nat Nat) (λ (x) x) (λ (y) 0))",
+        "(check-same (→ Nat (Pair Nat Nat)) (λ (a) (cons a a)) (λ (d) (cons d d)))",
     ];
     for s in exprs {
         let output;

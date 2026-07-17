@@ -1,0 +1,7 @@
+---
+source: pielang/src/test.rs
+description: (the (→ Nat Nat) (λ (x) x))
+expression: output
+---
+type: (→ Nat Nat)
+expr: (λ (x) x)

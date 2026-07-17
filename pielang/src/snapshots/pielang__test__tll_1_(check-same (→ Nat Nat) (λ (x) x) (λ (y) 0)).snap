@@ -1,0 +1,6 @@
+---
+source: pielang/src/test.rs
+description: (check-same (→ Nat Nat) (λ (x) x) (λ (y) 0))
+expression: output
+---
+error: The expressions (λ (x) x) and (λ (y) 0) are not the same (→ Nat Nat)
