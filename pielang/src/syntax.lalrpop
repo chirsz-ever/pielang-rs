@@ -1,8 +1,12 @@
 use crate::ast::*;
-use crate::utils::{Ref, Span};
+use crate::utils::{Ref, Span, LocatedError};
 use lalrpop_util::ParseError;
 
 grammar;
+
+extern {
+    type Error = LocatedError<String>;
+}
 
 // 词法解析器
 // 实际上 Pie 中除了 claim define check-same 之外全都是关键字，这里的操作有所不同
@@ -34,25 +38,11 @@ pub GlobalStatemantList = <GlobalStatemant*>;
 
 Ident: Ident<'input> = {
     <l:@L> <ident:IDENT> <r:@L> => {
-        Ident(Span(l, r), ident.into())
+        Ident(Span(l, r), ident)
     }
 }
 
-pub GlobalStatemant: GlobalStatemant<'input> = {
-    <e:Expr> => {
-        use Expr::*;
-        use GlobalStatemant::*;
-        match &e {
-            App(span, exprs) => match &**exprs {
-                [ Ident(_, f), Ident(span_id, id), body ] if &**f == "claim" => Claim(*span, crate::ast::Ident(*span_id, id.clone()), body.clone()),
-                [ Ident(_, f), Ident(span_id, id), body ] if &**f == "define" => Define(*span, crate::ast::Ident(*span_id, id.clone()), body.clone()),
-                [ Ident(_, f), ty, e1, e2 ] if &**f == "check-same" => CheckSame(*span, ty.clone(), e1.clone(), e2.clone()),
-                _ => Expression(e),
-            }
-            _ => Expression(e),
-        }
-    }
-}
+pub GlobalStatemant: GlobalStatemant<'input> = Expr =>? Ok(to_statement(<>)?);
 
 pub Expr: Expr<'input> = {
     Ident => <>.into(),
@@ -60,16 +50,21 @@ pub Expr: Expr<'input> = {
     <l:@L> <n:NAT_LIT> <r:@R> =>? {
         match n.parse() {
             Ok(n) => Ok(Expr::NatLit(Span(l, r), n)),
-            Err(_) => Err(ParseError::User { error: "parse natural number failed" }),
+            Err(_) => Err(ParseError::User {
+                error: LocatedError {
+                    loc: Some(Span(l, r)),
+                    erk: "parse natural number failed".to_string(),
+                }
+            }),
         }
     },
     // 'atom
     <l:@L> "'" <a:AtomIdent> <r:@R> => {
-        Expr::AtomLit(Span(l, r), a.into())
+        Expr::AtomLit(Span(l, r), a)
     },
     // (quote atom)
     <l:@L> <a:Enclosed<("quote" <AtomIdent>)>> <r:@R> => {
-        Expr::AtomLit(Span(l, r), a.into())
+        Expr::AtomLit(Span(l, r), a)
     },
     // (λ (ident+) expr)
     <l:@L> <e:Enclosed<(LAMBDA <Enclosed<Ident+>> <Expr>)>> <r:@R> => {
@@ -102,11 +97,16 @@ pub Expr: Expr<'input> = {
 
 // Pie 的 Atom 由字母或者横线组成
 AtomIdent: &'input str = {
-    AtomToken =>? {
+    <l:@L> <a:AtomToken> <r:@R> =>? {
         RE_ATOM_IDENT
-            .find(&<>)
+            .find(a)
             .map(|m| m.as_str())
-            .ok_or(ParseError::User { error: "Atoms can only consist of letters and hyphens" })
+            .ok_or_else(|| ParseError::User {
+                error: LocatedError {
+                    loc: Some(Span(l, r)),
+                    erk: "Atoms can only consist of letters and hyphens".to_string(),
+                }
+            })
     }
 }
 

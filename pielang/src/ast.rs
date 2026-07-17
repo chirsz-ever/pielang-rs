@@ -1,4 +1,4 @@
-use crate::utils::{Ref, Span};
+use crate::utils::{LocatedError, Ref, Span};
 
 /// 顶层语句允许 define 语句、claim 语句, check-same 语句和表达式。
 #[derive(Debug, Clone)]
@@ -112,3 +112,70 @@ pub const PIE_BUILTIN_FUNCTIONS: [(&str, usize); 32] = [
     // U
     ("U", 1),
 ];
+
+pub fn to_statement<'a>(e: Expr<'a>) -> Result<GlobalStatemant<'a>, LocatedError<String>> {
+    use Expr::*;
+    use GlobalStatemant::*;
+    let stat = match e {
+        App(span, exprs) => match &exprs[0] {
+            Ident(_, "claim") => {
+                let args = exprs.len() - 1;
+                let Ok([_, id, ty]): Result<[Expr<'_>; _], _> = exprs.try_into() else {
+                    return Err(LocatedError {
+                        loc: Some(span),
+                        erk: format!("claim: expect 2 arguments, got {}", args),
+                    });
+                };
+                let Ident(span_id, id) = id else {
+                    return Err(LocatedError {
+                        loc: Some(get_span(&id)),
+                        erk: format!("claim: expect an identifier as the first argument"),
+                    });
+                };
+                Claim(span, crate::ast::Ident(span_id, id), ty)
+            }
+            Ident(_, "define") => {
+                let args = exprs.len() - 1;
+                let Ok([_, id, body]): Result<[Expr<'_>; _], _> = exprs.try_into() else {
+                    return Err(LocatedError {
+                        loc: Some(span),
+                        erk: format!("define: expect 2 arguments, got {}", args),
+                    });
+                };
+                let Ident(span_id, id) = id else {
+                    return Err(LocatedError {
+                        loc: Some(get_span(&id)),
+                        erk: format!("define: expect an identifier as the first argument"),
+                    });
+                };
+                Define(span, crate::ast::Ident(span_id, id), body)
+            }
+            Ident(_, "check-same") => {
+                let args = exprs.len() - 1;
+                let Ok([_, ty, e1, e2]): Result<[Expr<'_>; _], _> = exprs.try_into() else {
+                    return Err(LocatedError {
+                        loc: Some(span),
+                        erk: format!("check-same: expect 3 arguments, got {}", args),
+                    });
+                };
+                CheckSame(span, ty, e1, e2)
+            }
+            _ => Expression(App(span, exprs)),
+        },
+        _ => Expression(e),
+    };
+    Ok(stat)
+}
+
+pub fn get_span(e: &Expr) -> Span {
+    match e {
+        Expr::NatLit(span, _) => *span,
+        Expr::AtomLit(span, _) => *span,
+        Expr::Ident(span, _) => *span,
+        Expr::App(span, _) => *span,
+        Expr::LambdaExpr(span, _, _) => *span,
+        Expr::PiExpr(span, _, _) => *span,
+        Expr::ArrowExpr(span, _) => *span,
+        Expr::SigmaExpr(span, _, _) => *span,
+    }
+}
