@@ -1,0 +1,6 @@
+---
+source: pielang/src/test.rs
+description: (define x y z)
+expression: result
+---
+"Error: 0:14: define: expect 2 arguments, got 3"

@@ -1,0 +1,6 @@
+---
+source: pielang/src/test.rs
+description: (claim x Nat)
+expression: result
+---
+"OK"

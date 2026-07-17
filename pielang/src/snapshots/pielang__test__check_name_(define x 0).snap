@@ -1,0 +1,6 @@
+---
+source: pielang/src/test.rs
+description: (define x 0)
+expression: result
+---
+"OK"

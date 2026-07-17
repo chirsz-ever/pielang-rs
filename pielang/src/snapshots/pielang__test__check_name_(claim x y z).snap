@@ -1,0 +1,6 @@
+---
+source: pielang/src/test.rs
+description: (claim x y z)
+expression: result
+---
+"Error: 0:13: claim: expect 2 arguments, got 3"

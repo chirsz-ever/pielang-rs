@@ -1,0 +1,6 @@
+---
+source: pielang/src/test.rs
+description: (check-same a b c d)
+expression: result
+---
+"Error: 0:20: check-same: expect 3 arguments, got 4"

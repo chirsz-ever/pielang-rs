@@ -1,0 +1,6 @@
+---
+source: pielang/src/test.rs
+description: (define f (Pi ((x Nat)(U Nat)) Atom))
+expression: result
+---
+"Error: 23:24: U is not a valid Pie name"

@@ -1,0 +1,6 @@
+---
+source: pielang/src/test.rs
+description: (claim U Nat)
+expression: result
+---
+"Error: 7:8: claim: U is not a valid Pie name"

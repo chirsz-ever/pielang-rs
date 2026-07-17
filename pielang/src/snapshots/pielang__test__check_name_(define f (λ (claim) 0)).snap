@@ -1,0 +1,6 @@
+---
+source: pielang/src/test.rs
+description: (define f (λ (claim) 0))
+expression: result
+---
+"OK"

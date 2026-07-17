@@ -1,0 +1,6 @@
+---
+source: pielang/src/test.rs
+description: (define f (λ (Pair) 0))
+expression: result
+---
+"Error: 15:19: Pair is not a valid Pie name"

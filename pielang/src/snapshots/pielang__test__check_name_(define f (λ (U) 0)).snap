@@ -1,0 +1,6 @@
+---
+source: pielang/src/test.rs
+description: (define f (λ (U) 0))
+expression: result
+---
+"Error: 15:16: U is not a valid Pie name"

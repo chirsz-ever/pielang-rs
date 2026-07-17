@@ -67,19 +67,22 @@ pub Expr: Expr<'input> = {
         Expr::AtomLit(Span(l, r), a)
     },
     // (λ (ident+) expr)
-    <l:@L> <e:Enclosed<(LAMBDA <Enclosed<Ident+>> <Expr>)>> <r:@R> => {
+    <l:@L> <e:Enclosed<(LAMBDA <Enclosed<Ident+>> <Expr>)>> <r:@R> =>? {
         let (args, body) = e;
-        Expr::LambdaExpr(Span(l, r), args, Ref::new(body))
+        check_builtin_names(&args)?;
+        Ok(Expr::LambdaExpr(Span(l, r), args, Ref::new(body)))
     },
     // (Π ((ident expr)+) expr)
-    <l:@L> <e:Enclosed<(PI <Enclosed<Enclosed<(<Ident> <Expr>)>+>> <Expr>)>> <r:@R> => {
+    <l:@L> <e:Enclosed<(PI <Enclosed<Enclosed<(<Ident> <Expr>)>+>> <Expr>)>> <r:@R> =>? {
         let (args, body) = e;
-        Expr::PiExpr(Span(l, r), args, Ref::new(body))
+        check_builtin_names(args.iter().map(|(id, _)| id))?;
+        Ok(Expr::PiExpr(Span(l, r), args, Ref::new(body)))
     },
     // (Σ ((ident expr)+) expr)
-    <l:@L> <e:Enclosed<(SIGMA <Enclosed<Enclosed<(<Ident> <Expr>)>+>> <Expr>)>> <r:@R> => {
+    <l:@L> <e:Enclosed<(SIGMA <Enclosed<Enclosed<(<Ident> <Expr>)>+>> <Expr>)>> <r:@R> =>? {
         let (args, body) = e;
-        Expr::SigmaExpr(Span(l, r), args, Ref::new(body))
+        check_builtin_names(args.iter().map(|(id, _)| id))?;
+        Ok(Expr::SigmaExpr(Span(l, r), args, Ref::new(body)))
     },
     // (→ expr+ expr)
     <l:@L> <e:Enclosed<(FARROW <Expr+> <Expr>)>> <r:@R> => {

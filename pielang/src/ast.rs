@@ -113,6 +113,9 @@ pub const PIE_BUILTIN_FUNCTIONS: [(&str, usize); 32] = [
     ("U", 1),
 ];
 
+/// 关键字
+pub const PIE_KEYWORDS: [&str; 8] = ["quote", "Π", "Pi", "∏", "Σ", "Sigma", "λ", "lambda"];
+
 pub fn to_statement<'a>(e: Expr<'a>) -> Result<GlobalStatemant<'a>, LocatedError<String>> {
     use Expr::*;
     use GlobalStatemant::*;
@@ -129,9 +132,15 @@ pub fn to_statement<'a>(e: Expr<'a>) -> Result<GlobalStatemant<'a>, LocatedError
                 let Ident(span_id, id) = id else {
                     return Err(LocatedError {
                         loc: Some(get_span(&id)),
-                        erk: "claim: expect an identifier as the first argument".to_string(),
+                        erk: "claim: expect identifier".to_string(),
                     });
                 };
+                if is_builtin_name(id) {
+                    return Err(LocatedError {
+                        loc: Some(span_id),
+                        erk: format!("claim: {} is not a valid Pie name", id),
+                    });
+                }
                 Claim(span, crate::ast::Ident(span_id, id), ty)
             }
             Ident(_, "define") => {
@@ -145,9 +154,15 @@ pub fn to_statement<'a>(e: Expr<'a>) -> Result<GlobalStatemant<'a>, LocatedError
                 let Ident(span_id, id) = id else {
                     return Err(LocatedError {
                         loc: Some(get_span(&id)),
-                        erk: "define: expect an identifier as the first argument".to_string(),
+                        erk: "define: expect identifier".to_string(),
                     });
                 };
+                if is_builtin_name(id) {
+                    return Err(LocatedError {
+                        loc: Some(span_id),
+                        erk: format!("define: {} is not a valid Pie name", id),
+                    });
+                }
                 Define(span, crate::ast::Ident(span_id, id), body)
             }
             Ident(_, "check-same") => {
@@ -178,4 +193,22 @@ pub fn get_span(e: &Expr) -> Span {
         Expr::ArrowExpr(span, _) => *span,
         Expr::SigmaExpr(span, _, _) => *span,
     }
+}
+
+pub fn is_builtin_name(name: &str) -> bool {
+    PIE_BUILTIN_SINGLETONS.contains(&name)
+        || PIE_BUILTIN_FUNCTIONS.iter().any(|(n, _)| n == &name)
+        || PIE_KEYWORDS.contains(&name)
+}
+
+pub fn check_builtin_names<'a>(args: impl IntoIterator<Item = &'a Ident<'a>>) -> Result<(), LocatedError<String>> {
+    for Ident(span, id) in args {
+        if is_builtin_name(id) {
+            return Err(LocatedError {
+                loc: Some(*span),
+                erk: format!("{} is not a valid Pie name", id),
+            });
+        }
+    }
+    Ok(())
 }

@@ -4,6 +4,52 @@ use crate::{core_ast, scope_check};
 use core_ast::DBIPPrint as dpp;
 
 #[test]
+fn check_name() {
+    let parser = crate::syntax::GlobalStatemantParser::new();
+    let stats = [
+        "(claim x Nat)",
+        "(claim x)",
+        "(claim x y z)",
+        "(claim claim Nat)",
+        "(claim U Nat)",
+        "(define x 0)",
+        "(define x)",
+        "(define x y z)",
+        "(define define 0)",
+        "(define check-same 0)",
+        "(define f (λ (U) 0))",
+        "(define f (λ (sole) 0))",
+        "(define f (λ (Pair) 0))",
+        "(define f (λ (claim) 0))",
+        "(define f (λ (define) 0))",
+        "(define f (Pi ((U Nat)) Atom))",
+        "(define f (Pi ((x Nat)(U Nat)) Atom))",
+        "(define f (Sigma ((U Nat)) Atom))",
+        "(define f (Sigma ((x Nat)(U Nat)) Atom))",
+        "(check-same Nat 0 0)",
+        "(check-same a)",
+        "(check-same a b)",
+        "(check-same a b c d)",
+    ];
+    for e in stats {
+        insta::with_settings!({
+            description => e,
+        }, {
+            let result;
+            match parser.parse(e) {
+                Ok(_) => {
+                    result = "OK".to_string();
+                }
+                Err(err) => {
+                    result = format!("Error: {}", err);
+                }
+            }
+            insta::assert_debug_snapshot!(format!("check_name_{}", e), result);
+        });
+    }
+}
+
+#[test]
 fn parse_expression() {
     let parser = crate::syntax::ExprParser::new();
     let exprs = [
