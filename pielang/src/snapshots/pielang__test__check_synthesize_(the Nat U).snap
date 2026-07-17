@@ -1,0 +1,6 @@
+---
+source: pielang/src/test.rs
+description: (the Nat U)
+expression: output
+---
+error: Expected Nat but given U

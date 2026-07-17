@@ -85,6 +85,7 @@ pub enum ErrorKind {
     TypeNotMatch { expected: String, given: String },
     CannotInferType { expr: String },
     NotSame(String, String, String),
+    NotType(String),
 }
 
 impl fmt::Display for ErrorKind {
@@ -92,13 +93,16 @@ impl fmt::Display for ErrorKind {
         use ErrorKind::*;
         match self {
             TypeNotMatch { expected, given } => {
-                write!(f, "expect a `{}`, but get `{}`", expected, given)
+                write!(f, "Expected {} but given {}", expected, given)
             }
             CannotInferType { expr } => {
-                write!(f, "cannot infer the type of `{}`", expr)
+                write!(f, "Can't determine the type of {}", expr)
             }
             NotSame(x, y, t) => {
-                write!(f, "`{}` and `{}` are not the same `{}`", x, y, t)
+                write!(f, "The expressions {} and {} are not the same {}", x, y, t)
+            }
+            NotType(x) => {
+                write!(f, "{} is not a type", x)
             }
         }
     }
@@ -314,6 +318,13 @@ pub fn synthesize_with_type<M: fmt::Display>(
             if let [NatLiteral(0)] = **args =>
         {
             BuiltinId(ty)
+        }
+        (BuiltinApply("U", _), BuiltinId(_)) => {
+            return Err(ErrorKind::TypeNotMatch {
+                expected: dpp(ty, env).to_string(),
+                given: dpp(e, env).to_string(),
+            }
+            .into());
         }
         // FunI-1
         (LambdaExpr(arg, r), PiExpr(pi_arg, ty_arg, ty_ret)) => {
@@ -786,6 +797,9 @@ pub fn resolve_type<M: fmt::Display>(
                 SigmaExpr(arg.clone(), Ref::new(ty_a_o), Ref::new(ty_d_o)),
             )
         }
+        NatLiteral(_) | AtomLiteral(_) => {
+            return Err(ErrorKind::NotType(format!("{}", dpp(e, env))).into());
+        }
         BuiltinApply(bf, args) => {
             match (&**bf, &**args) {
                 // ListF
@@ -823,11 +837,16 @@ pub fn resolve_type<M: fmt::Display>(
                         }),
                     }
                 }
+                ("add1", _) => throw!(ErrorKind::NotType("(add1 ...)".into())),
                 _ => unreachable!(),
             }
         }
         // 内建单例对象
         BuiltinId(ty @ ("Atom" | "Nat" | "Trivial" | "Absurd")) => (0, BuiltinId(ty)),
+        // 非类型单例对象
+        BuiltinId(e @ ("zero" | "sole" | "nil" | "vecnil")) => {
+            return Err(ErrorKind::NotType(e.to_string()).into());
+        }
         //Literal, Lambda, Identifier, Apply
         // El
         _ => (0, synthesize_with_type(e, &bty::u(), env)?),
@@ -889,9 +908,13 @@ fn is_type_check_same(ty1: &Type<Never>, ty2: &Type<Never>, env: &Env) -> bool {
                         && is_expr_check_same(to1, to2, ty_x1, env)
                 }
                 ("U", [n1], "U", [n2]) => is_expr_check_same(n1, n2, &bty::nat(), env),
+                ("U", _, "List" | "Vec" | "=" | "Either", _) => false,
+                ("List" | "Vec" | "=" | "Either", _, "U", _) => false,
                 _ => todo!(),
             }
         }
+        (BuiltinApply("U", _), BuiltinId("Atom" | "Nat" | "Trivial" | "Absurd")) => false,
+        (BuiltinId("Atom" | "Nat" | "Trivial" | "Absurd"), BuiltinApply("U", _)) => false,
         _ => {
             todo!()
         }

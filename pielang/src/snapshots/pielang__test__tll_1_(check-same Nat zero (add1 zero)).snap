@@ -1,6 +1,6 @@
 ---
-source: src/test.rs
+source: pielang/src/test.rs
 description: (check-same Nat zero (add1 zero))
 expression: output
 ---
-error: `zero` and `(add1 zero)` are not the same `Nat`
+error: The expressions zero and (add1 zero) are not the same Nat

@@ -1,6 +1,6 @@
 ---
-source: src/test.rs
+source: pielang/src/test.rs
 description: "(the (Pair Atom Atom) (cons 'ratatouille 0))"
 expression: output
 ---
-error: expect a `Atom`, but get `Nat`
+error: Expected Atom but given Nat

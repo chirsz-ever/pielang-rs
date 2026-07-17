@@ -1,6 +1,6 @@
 ---
-source: src/test.rs
+source: pielang/src/test.rs
 description: (the Trivial 0)
 expression: output
 ---
-error: expect a `Trivial`, but get `Nat`
+error: Expected Trivial but given Nat

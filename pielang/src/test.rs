@@ -112,26 +112,31 @@ fn synthesize_tests() -> anyhow::Result<()> {
         "(the Nat zero)",
         "(the Nat (add1 zero))",
         "(the Nat 114)",
-        "(the Nat 'a)",
         // Atom
         "(the U Atom)",
         "'a",
         "(quote atom)",
         "(the Atom 'a)",
-        "(the Atom zero)",
         // Trivial
         "(the U Trivial)",
         "sole",
         "(the Trivial sole)",
-        "(the Trivial 0)",
-        "(the Trivial 'a)",
         // Absurd
         "(the U Absurd)",
-        "(the Absurd 0)",
         "(the (→ Absurd Nat) (λ (nope) (ind-Absurd nope Nat)))",
         "(the (→ Absurd Nat) (λ (nope) (ind-Absurd (the Absurd nope) Nat)))",
+        // Error cases
+        "(the Nat 'a)",
+        "(the Atom zero)",
+        "(the Trivial 0)",
+        "(the Trivial 'a)",
+        "(the Absurd 0)",
+        "(the 0 'a)",
+        "(the Nat U)",
+        "(the U 'a)",
     ];
     for s in exprs {
+        eprintln!("{} ... ", s);
         let output = check_synthesize(s)?;
         insta::with_settings!({
             description => s,

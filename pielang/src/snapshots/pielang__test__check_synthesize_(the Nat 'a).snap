@@ -1,6 +1,6 @@
 ---
-source: src/test.rs
+source: pielang/src/test.rs
 description: "(the Nat 'a)"
-expression: "format!(\"error: {}\", err)"
+expression: output
 ---
-error: expect a `Nat`, but get `Atom`
+error: Expected Nat but given Atom

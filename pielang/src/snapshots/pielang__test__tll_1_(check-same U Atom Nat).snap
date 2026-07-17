@@ -1,6 +1,6 @@
 ---
-source: src/test.rs
+source: pielang/src/test.rs
 description: (check-same U Atom Nat)
 expression: output
 ---
-error: `Atom` and `Nat` are not the same `U`
+error: The expressions Atom and Nat are not the same U
