@@ -93,7 +93,7 @@ fn check_same(expr: &str) -> anyhow::Result<String> {
     let e1_o = tc::synthesize_with_type(&e1, &ty_o, &env)?;
     let e2_o = tc::synthesize_with_type(&e2, &ty_o, &env)?;
     let mut output = String::new();
-    match tc::expr_check_same(&e1_o, &e2_o, &ty, &env) {
+    match tc::expr_check_same(&e1_o, &e2_o, &ty_o, &env) {
         Ok(_) => output += "OK",
         Err(err) => output += &format!("error: {}", err),
     }

@@ -105,7 +105,7 @@ fn process_check_same(
     let e1_o = tc::synthesize_with_type(&e1, &ty_o, env)?;
     let e2_o = tc::synthesize_with_type(&e2, &ty_o, env)?;
     log::trace!("-----");
-    tc::expr_check_same(&e1_o, &e2_o, &ty, env)?;
+    tc::expr_check_same(&e1_o, &e2_o, &ty_o, env)?;
     Ok(())
 }
 

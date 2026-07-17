@@ -481,7 +481,7 @@ pub fn synthesize<M: fmt::Display>(
                     }
                 }
                 // 内建类型
-                ("List" | "Vec" | "Either" | "=", _) => resolve_type_rule(e, env)?,
+                ("List" | "Vec" | "Either" | "=" | "Pair", _) => resolve_type_rule(e, env)?,
                 // nil 和 vecnil 必须附加类型
                 (s, []) => throw!(ErrorKind::CannotInferType { expr: s.to_owned() }),
                 // "The" 规则
@@ -806,6 +806,15 @@ pub fn resolve_type<M: fmt::Display>(
                 ("List", [ty_e]) => {
                     let (l, ty_e_o) = resolve_type(ty_e, env)?;
                     (l, bty::list(ty_e_o))
+                }
+                // ΣF-Pair
+                ("Pair", [ty_a, ty_d]) => {
+                    let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
+                    let (l_d, ty_d_o) = resolve_type(ty_d, &env_ext(&env, None, &ty_a_o))?;
+                    (
+                        std::cmp::max(l_a, l_d),
+                        SigmaExpr(Argument::Dummy, Ref::new(ty_a_o), Ref::new(ty_d_o)),
+                    )
                 }
                 // VecF
                 ("Vec", [ty, len]) => {
