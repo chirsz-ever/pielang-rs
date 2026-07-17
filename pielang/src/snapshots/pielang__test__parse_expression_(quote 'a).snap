@@ -6,26 +6,19 @@ expression: parser.parse(e)
 Err(
     UnrecognizedToken {
         token: (
-            1,
+            7,
             Token(
-                19,
-                "quote",
+                9,
+                "'",
             ),
-            6,
+            8,
         ),
         expected: [
-            "Ident",
-            "AtomLit",
-            "NatLit",
-            "KEYWORD",
-            "QuoteAtomLit",
+            "IDENT",
             "PI",
             "SIGMA",
             "LAMBDA",
-            "FARROW",
-            "\"(\"",
-            "\"[\"",
-            "\"{\"",
+            "\"quote\"",
         ],
     },
 )

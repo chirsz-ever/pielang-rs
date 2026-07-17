@@ -1,37 +1,35 @@
 ---
-source: src/test.rs
+source: pielang/src/test.rs
 description: "[the Nat 1]"
 expression: parser.parse(e)
 ---
 Ok(
-    List(
+    App(
         Span(
             0,
             11,
         ),
         [
-            Identifier(
+            Ident(
                 Span(
                     1,
                     4,
                 ),
                 "the",
             ),
-            Identifier(
+            Ident(
                 Span(
                     5,
                     8,
                 ),
                 "Nat",
             ),
-            Literal(
+            NatLit(
                 Span(
                     9,
                     10,
                 ),
-                Nat(
-                    1,
-                ),
+                1,
             ),
         ],
     ),

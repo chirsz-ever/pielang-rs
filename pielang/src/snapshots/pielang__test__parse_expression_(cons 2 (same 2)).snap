@@ -1,52 +1,48 @@
 ---
-source: src/test.rs
+source: pielang/src/test.rs
 description: (cons 2 (same 2))
 expression: parser.parse(e)
 ---
 Ok(
-    List(
+    App(
         Span(
             0,
             17,
         ),
         [
-            Identifier(
+            Ident(
                 Span(
                     1,
                     5,
                 ),
                 "cons",
             ),
-            Literal(
+            NatLit(
                 Span(
                     6,
                     7,
                 ),
-                Nat(
-                    2,
-                ),
+                2,
             ),
-            List(
+            App(
                 Span(
                     8,
                     16,
                 ),
                 [
-                    Identifier(
+                    Ident(
                         Span(
                             9,
                             13,
                         ),
                         "same",
                     ),
-                    Literal(
+                    NatLit(
                         Span(
                             14,
                             15,
                         ),
-                        Nat(
-                            2,
-                        ),
+                        2,
                     ),
                 ],
             ),

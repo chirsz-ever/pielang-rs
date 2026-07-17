@@ -1,5 +1,6 @@
 use crate::ast::*;
 use crate::utils::{Ref, Span};
+use lalrpop_util::ParseError;
 
 grammar;
 
@@ -9,34 +10,20 @@ match {
     r"\s*" => { }, // 空白
     r";[^\n\r]*[\n\r]*" => { }, // 注释
     r"#[^\n\r]*[\n\r]+" => HeaderComment, // 头部注释
-    "(",
-    ")",
-    "[",
-    "]",
-    "{",
-    "}",
-    "claim",
-    "define",
-    "check-same",
+    "(", ")", "[", "]", "{", "}", // 括号
+    "'",
     "quote",
     r"Π|Pi|∏" => PI,
     r"Σ|Sigma" => SIGMA,
     r"λ|lambda" => LAMBDA,
     r"→|->" => FARROW,
-    r"0|[1-9][0-9]*" => NatLit,
-    // Pie 的 Atom 由字母或者横线组成
-    // 由于 LALRPOP 的限制，无法使 ' 或者 quote 后的标识符采用单独的词法规则，只能作为整体的 token 来匹配
-    // TODO: 更好的方式: { "'" <AtomIdent> => ..., Enclosed<("quote" <AtomIdent>)> => ... }
-    r"'\s*[-\w--\d]+" => AtomLit,
-    r"quote\s*[-\w--\d]+" => QuoteAtomLit,
-    // 内置关键字
-    r"Atom|Nat|zero|nil|vecnil|Trivial|sole|Absurd|Pair|the|cons|car|cdr|add1|which-Nat|iter-Nat|rec-Nat|ind-Nat|List|::|rec-List|ind-List|Vec|vec::|head|tail|ind-Vec|=|same|symm|cong|replace|trans|ind-=|Either|left|right|ind-Either|ind-Absurd|U" => KEYWORD,
+    r"[0-9]+" => NAT_LIT,
 } else {
     // https://docs.racket-lang.org/reference/reader.html#%28tech._delimiter%29
     // 不可用于标识符的字符：()[]{}",'`;#\|
     // 首字符可以是数字，如 0≠1
     // TODO: 禁止 -1 这种在 Racket 中是数字字面量，在 Pie 中非法的标识符
-    r#"[\S--[()\[\]{}"'`,#\\|;]]+"# => Ident,
+    r#"[\S--[()\[\]{}"'`,#\\|;]]+"# => IDENT,
 }
 
 Enclosed<T> = { "(" <T> ")", "[" <T> "]", "{" <T> "}" }
@@ -45,45 +32,57 @@ pub Grammer = HeaderComment* <GlobalStatemantList>;
 
 pub GlobalStatemantList = <GlobalStatemant*>;
 
+Ident: Ident = {
+    <l:@L> <ident:IDENT> <r:@L> => {
+        Ident(Span(l, r), ident.into())
+    }
+}
+
 pub GlobalStatemant: GlobalStatemant = {
-    <l:@L> <e:Enclosed<("claim" <Symbol> <Expr>)>> <r:@R> => {
-        let (ident, sexpr) = e;
-        GlobalStatemant::Claim(Span(l, r), ident, sexpr)
-    },
-    <l:@L> <e:Enclosed<("define" <Symbol> <Expr>)>> <r:@R> => {
-        let (ident, sexpr) = e;
-        GlobalStatemant::Define(Span(l, r), ident, sexpr)
-    },
-    <l:@L> <e:Enclosed<("check-same" <Expr> <Expr> <Expr>)>> <r:@R> => {
-        let (ty, e1, e2) = e;
-        GlobalStatemant::CheckSame(Span(l, r), ty, e1, e2)
-    },
-    Expr => GlobalStatemant::Expression(<>),
+    <e:Expr> => {
+        use Expr::*;
+        use GlobalStatemant::*;
+        match &e {
+            App(span, exprs) => match &**exprs {
+                [ Ident(_, f), Ident(span_id, id), body ] if &**f == "claim" => Claim(*span, crate::ast::Ident(*span_id, id.clone()), body.clone()),
+                [ Ident(_, f), Ident(span_id, id), body ] if &**f == "define" => Define(*span, crate::ast::Ident(*span_id, id.clone()), body.clone()),
+                [ Ident(_, f), ty, e1, e2 ] if &**f == "check-same" => CheckSame(*span, ty.clone(), e1.clone(), e2.clone()),
+                _ => Expression(e),
+            }
+            _ => Expression(e),
+        }
+    }
 }
 
 pub Expr: Expr = {
-    Symbol => {
-        let Symbol(span, sym) = <>;
-        Expr::Identifier(span, sym)
+    Ident => <>.into(),
+    // Nature Number: 0, 1, 2 ...
+    <l:@L> <n:NAT_LIT> <r:@R> =>? {
+        match n.parse() {
+            Ok(n) => Ok(Expr::NatLit(Span(l, r), n)),
+            Err(_) => Err(ParseError::User { error: "parse natural number failed" }),
+        }
     },
-    <l:@L> <kw:KEYWORD> <r:@R> => {
-        Expr::Identifier(Span(l, r), kw.into())
+    // 'atom
+    <l:@L> "'" <a:AtomIdent> <r:@R> => {
+        Expr::AtomLit(Span(l, r), a.into())
     },
-    <l:@L> <lit:Literal> <r:@R> => {
-        Expr::Literal(Span(l, r), lit)
+    // (quote atom)
+    <l:@L> <a:Enclosed<("quote" <AtomIdent>)>> <r:@R> => {
+        Expr::AtomLit(Span(l, r), a.into())
     },
     // (λ (ident+) expr)
-    <l:@L> <e:Enclosed<(LAMBDA <Enclosed<Symbol+>> <Expr>)>> <r:@R> => {
+    <l:@L> <e:Enclosed<(LAMBDA <Enclosed<Ident+>> <Expr>)>> <r:@R> => {
         let (args, body) = e;
         Expr::LambdaExpr(Span(l, r), args, Ref::new(body))
     },
     // (Π ((ident expr)+) expr)
-    <l:@L> <e:Enclosed<(PI <Enclosed<Enclosed<(<Symbol> <Expr>)>+>> <Expr>)>> <r:@R> => {
+    <l:@L> <e:Enclosed<(PI <Enclosed<Enclosed<(<Ident> <Expr>)>+>> <Expr>)>> <r:@R> => {
         let (args, body) = e;
         Expr::PiExpr(Span(l, r), args, Ref::new(body))
     },
     // (Σ ((ident expr)+) expr)
-    <l:@L> <e:Enclosed<(SIGMA <Enclosed<Enclosed<(<Symbol> <Expr>)>+>> <Expr>)>> <r:@R> => {
+    <l:@L> <e:Enclosed<(SIGMA <Enclosed<Enclosed<(<Ident> <Expr>)>+>> <Expr>)>> <r:@R> => {
         let (args, body) = e;
         Expr::SigmaExpr(Span(l, r), args, Ref::new(body))
     },
@@ -97,35 +96,18 @@ pub Expr: Expr = {
     <l:@L> <e:Enclosed<(<Expr+> <Expr>)>> <r:@R> => {
         let (mut exprs, last) = e;
         exprs.push(last);
-        Expr::List(Span(l, r), exprs)
-    }
-};
-
-Symbol: Symbol = {
-    <l:@L> <ident:Ident> <r:@L> => {
-        Symbol(Span(l, r), ident.into())
+        Expr::App(Span(l, r), exprs)
     }
 }
 
-Literal: Literal = {
-    // Nature Number: 0, 1, 2 ...
-    NatLit => {
-        Literal::Nat(<>.parse().unwrap())
-    },
-    // 'atom
-    AtomLit => {
-        regex::Regex::new(r"'\s*([-\w--\d]+)").unwrap()
-            .captures(&<>)
-            .map(|cap| cap.get(1).unwrap().as_str().into())
-            .map(Literal::Atom)
-            .unwrap()
-    },
-    // (quote atom)
-    Enclosed<(<QuoteAtomLit>)> => {
-        regex::Regex::new(r"quote\s*([-\w--\d]+)").unwrap()
-            .captures(&<>)
-            .map(|cap| cap.get(1).unwrap().as_str().into())
-            .map(Literal::Atom)
-            .unwrap()
+// Pie 的 Atom 由字母或者横线组成
+AtomIdent: &'input str = {
+    AtomToken =>? {
+        RE_ATOM_IDENT
+            .find(&<>)
+            .map(|m| m.as_str())
+            .ok_or(ParseError::User { error: "Atoms can only consist of letters and hyphens" })
     }
 }
+
+AtomToken = { "quote", PI, SIGMA, LAMBDA, IDENT }

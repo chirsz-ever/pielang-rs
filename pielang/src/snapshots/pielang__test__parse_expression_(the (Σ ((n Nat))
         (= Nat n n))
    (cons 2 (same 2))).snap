@@ -1,16 +1,16 @@
 ---
-source: src/test.rs
+source: pielang/src/test.rs
 description: "(the (Σ ((n Nat))\n         (= Nat n n))\n    (cons 2 (same 2)))"
 expression: parser.parse(e)
 ---
 Ok(
-    List(
+    App(
         Span(
             0,
             63,
         ),
         [
-            Identifier(
+            Ident(
                 Span(
                     1,
                     4,
@@ -24,14 +24,14 @@ Ok(
                 ),
                 [
                     (
-                        Symbol(
+                        Ident(
                             Span(
                                 11,
                                 12,
                             ),
                             "n",
                         ),
-                        Identifier(
+                        Ident(
                             Span(
                                 13,
                                 16,
@@ -40,34 +40,34 @@ Ok(
                         ),
                     ),
                 ],
-                List(
+                App(
                     Span(
                         28,
                         39,
                     ),
                     [
-                        Identifier(
+                        Ident(
                             Span(
                                 29,
                                 30,
                             ),
                             "=",
                         ),
-                        Identifier(
+                        Ident(
                             Span(
                                 31,
                                 34,
                             ),
                             "Nat",
                         ),
-                        Identifier(
+                        Ident(
                             Span(
                                 35,
                                 36,
                             ),
                             "n",
                         ),
-                        Identifier(
+                        Ident(
                             Span(
                                 37,
                                 38,
@@ -77,49 +77,45 @@ Ok(
                     ],
                 ),
             ),
-            List(
+            App(
                 Span(
                     45,
                     62,
                 ),
                 [
-                    Identifier(
+                    Ident(
                         Span(
                             46,
                             50,
                         ),
                         "cons",
                     ),
-                    Literal(
+                    NatLit(
                         Span(
                             51,
                             52,
                         ),
-                        Nat(
-                            2,
-                        ),
+                        2,
                     ),
-                    List(
+                    App(
                         Span(
                             53,
                             61,
                         ),
                         [
-                            Identifier(
+                            Ident(
                                 Span(
                                     54,
                                     58,
                                 ),
                                 "same",
                             ),
-                            Literal(
+                            NatLit(
                                 Span(
                                     59,
                                     60,
                                 ),
-                                Nat(
-                                    2,
-                                ),
+                                2,
                             ),
                         ],
                     ),

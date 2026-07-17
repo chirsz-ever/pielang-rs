@@ -1,16 +1,14 @@
 ---
-source: src/test.rs
+source: pielang/src/test.rs
 description: "9876"
 expression: parser.parse(e)
 ---
 Ok(
-    Literal(
+    NatLit(
         Span(
             0,
             4,
         ),
-        Nat(
-            9876,
-        ),
+        9876,
     ),
 )

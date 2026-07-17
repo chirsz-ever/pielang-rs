@@ -1,16 +1,14 @@
 ---
-source: src/test.rs
+source: pielang/src/test.rs
 description: (quote this-is-a-symbol)
 expression: parser.parse(e)
 ---
 Ok(
-    Literal(
+    AtomLit(
         Span(
             0,
             24,
         ),
-        Atom(
-            "this-is-a-symbol",
-        ),
+        "this-is-a-symbol",
     ),
 )

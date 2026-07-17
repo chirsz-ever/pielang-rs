@@ -64,7 +64,7 @@ impl<K, V> StackMap<K, V> {
     }
 }
 
-impl<K, V> std::iter::FromIterator<(K, V)> for StackMap<K, V> {
+impl<K, V> FromIterator<(K, V)> for StackMap<K, V> {
     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
         let mut ret = StackMap::new();
         for (k, v) in iter {

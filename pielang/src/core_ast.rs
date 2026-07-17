@@ -9,12 +9,6 @@ macro_rules! throw {
     };
 }
 
-macro_rules! claim_array {
-    ($id:ident $name:ident: [$ty: ty; _] = $value:expr $(;)?) => {
-        $id $name: [$ty; $value.len()] = $value;
-    }
-}
-
 // TODO: 嵌入源代码位置信息，定义合适的错误类型
 
 pub type ULevel = u64;
@@ -353,19 +347,20 @@ impl fmt::Display for Argument {
 pub fn unfold(e: &ast::Expr) -> Result<Expr<Never, Ref<str>>, Error> {
     use ast::Expr::*;
     let ret = match e {
-        Literal(_, ast::Literal::Nat(n)) => Expr::NatLiteral(*n),
-        Literal(_, ast::Literal::Atom(atom)) => Expr::AtomLiteral(atom.clone()),
-        Identifier(_, id) => match &**id {
+        NatLit(_, n) => Expr::NatLiteral(*n),
+        AtomLit(_, atom) => Expr::AtomLiteral(atom.clone()),
+        Ident(_, id) => match &**id {
             "U" => Expr::BuiltinApply("U", vec![Expr::NatLiteral(0)]),
-            _ if let Some(id) = PIE_BUILTIN_SINGLETONS.iter().find(|d| **d == &**id) => {
+            _ if let Some(id) = ast::PIE_BUILTIN_SINGLETONS.iter().find(|d| **d == &**id) => {
                 Expr::BuiltinId(id)
             }
             _ => Expr::Identifier(id.clone()),
         },
-        List(loc, exprs) => match &**exprs {
-            [Identifier(_, f), args @ ..]
-                if let Some((bid, argc)) =
-                    PIE_BUILTIN_FUNCTIONS.iter().find(|(bid, _)| **bid == **f) =>
+        App(loc, exprs) => match &**exprs {
+            [Ident(_, f), args @ ..]
+                if let Some((bid, argc)) = ast::PIE_BUILTIN_FUNCTIONS
+                    .iter()
+                    .find(|(bid, _)| **bid == **f) =>
             {
                 if args.len() == *argc {
                     Expr::BuiltinApply(bid, map_result(args, unfold)?)
@@ -380,12 +375,12 @@ pub fn unfold(e: &ast::Expr) -> Result<Expr<Never, Ref<str>>, Error> {
                     });
                 }
             }
-            [Identifier(_, f), ty_a, ty_d] if &**f == "Pair" => Expr::SigmaExpr(
+            [Ident(_, f), ty_a, ty_d] if &**f == "Pair" => Expr::SigmaExpr(
                 Argument::Dummy,
                 Ref::new(unfold(ty_a)?),
                 Ref::new(unfold(ty_d)?),
             ),
-            [Identifier(loc, f), args @ ..] if &**f == "Pair" => {
+            [Ident(loc, f), args @ ..] if &**f == "Pair" => {
                 throw!(Error {
                     loc: Some(loc.clone()),
                     erk: ErrorKind::IllegalArgumentNumber {
@@ -400,7 +395,7 @@ pub fn unfold(e: &ast::Expr) -> Result<Expr<Never, Ref<str>>, Error> {
         LambdaExpr(_, args, body) => {
             let mut e = unfold(body)?;
             // 注意从后向前的顺序
-            for ast::Symbol(_, sym) in args.iter().rev() {
+            for ast::Ident(_, sym) in args.iter().rev() {
                 e = Expr::LambdaExpr(self::Argument::Symbol(sym.clone()), Ref::new(e));
             }
             e
@@ -412,7 +407,7 @@ pub fn unfold(e: &ast::Expr) -> Result<Expr<Never, Ref<str>>, Error> {
                 .map(|(_, ty)| unfold(ty))
                 .collect::<Result<_, Error>>()?;
             let mut e = body;
-            for (i, (ast::Symbol(_, sym), _)) in args.iter().enumerate().rev() {
+            for (i, (ast::Ident(_, sym), _)) in args.iter().enumerate().rev() {
                 let has_body_ref = occurs(&e, sym) || types[i + 1..].iter().any(|t| occurs(t, sym));
                 let arg = if has_body_ref {
                     self::Argument::Symbol(sym.clone())
@@ -440,7 +435,7 @@ pub fn unfold(e: &ast::Expr) -> Result<Expr<Never, Ref<str>>, Error> {
                 .map(|(_, ty)| unfold(ty))
                 .collect::<Result<_, Error>>()?;
             let mut e = body;
-            for (i, (ast::Symbol(_, sym), _)) in args.iter().enumerate().rev() {
+            for (i, (ast::Ident(_, sym), _)) in args.iter().enumerate().rev() {
                 let has_body_ref = occurs(&e, sym) || types[i + 1..].iter().any(|t| occurs(t, sym));
                 let arg = if has_body_ref {
                     self::Argument::Symbol(sym.clone())
@@ -485,68 +480,6 @@ fn match_arg(var: &str, arg: &Argument) -> bool {
         Argument::Dummy => true,
         Argument::Symbol(sym) => **sym == *var,
     }
-}
-
-// 内建单例对象，其后是类型等级
-claim_array! {
-const PIE_BUILTIN_SINGLETONS: [&str; _] = [
-    "Atom",
-    "Nat",
-    "zero",
-    "nil",
-    "vecnil",
-    "Trivial",
-    "sole",
-    "Absurd",
-];
-}
-
-// 内建函数名及参数数
-claim_array! {
-const PIE_BUILTIN_FUNCTIONS: [(&str, usize); _] = [
-    // `(the Type expr)`
-    ("the", 2),
-    // Pair
-    // convert Pair to Sigma, so no need to define Pair as builtin function
-    // ("Pair", 2),
-    ("cons", 2),
-    ("car", 1),
-    ("cdr", 1),
-    // Nat
-    ("add1", 1),
-    ("which-Nat", 3),
-    ("iter-Nat", 3),
-    ("rec-Nat", 3),
-    ("ind-Nat", 4),
-    // List
-    ("List", 1),
-    ("::", 2),
-    ("rec-List", 3),
-    ("ind-List", 4),
-    // Vec
-    ("Vec", 2),
-    ("vec::", 2),
-    ("head", 1),
-    ("tail", 1),
-    ("ind-Vec", 5),
-    // Equality
-    ("=", 3),
-    ("same", 1),
-    ("symm", 1),
-    ("cong", 2),
-    ("replace", 3),
-    ("trans", 2),
-    ("ind-=", 3),
-    // Either
-    ("Either", 2),
-    ("left", 1),
-    ("right", 1),
-    ("ind-Either", 4),
-    // Absurd
-    ("ind-Absurd", 2),
-    // U
-    ("U", 1),
-];
 }
 
 // 内建无参数类型

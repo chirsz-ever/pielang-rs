@@ -1,14 +1,14 @@
 ---
-source: src/test.rs
+source: pielang/src/test.rs
 description: "01"
 expression: parser.parse(e)
 ---
 Ok(
-    Identifier(
+    NatLit(
         Span(
             0,
             2,
         ),
-        "01",
+        1,
     ),
 )

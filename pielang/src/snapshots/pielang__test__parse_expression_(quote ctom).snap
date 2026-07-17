@@ -1,16 +1,14 @@
 ---
-source: src/test.rs
+source: pielang/src/test.rs
 description: (quote ctom)
 expression: parser.parse(e)
 ---
 Ok(
-    Literal(
+    AtomLit(
         Span(
             0,
             12,
         ),
-        Atom(
-            "ctom",
-        ),
+        "ctom",
     ),
 )

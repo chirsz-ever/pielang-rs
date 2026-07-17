@@ -1,16 +1,14 @@
 ---
-source: src/test.rs
+source: pielang/src/test.rs
 description: "'  btom"
 expression: parser.parse(e)
 ---
 Ok(
-    Literal(
+    AtomLit(
         Span(
             0,
             7,
         ),
-        Atom(
-            "btom",
-        ),
+        "btom",
     ),
 )

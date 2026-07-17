@@ -992,10 +992,12 @@ fn is_expr_check_same(c1: &Expr<Never>, c2: &Expr<Never>, ct: &Type<Never>, env:
         }
         // FunSame-λ
         (LambdaExpr(_, r1), LambdaExpr(_, r2)) => {
-            let PiExpr(a, ty_a, ty_r) = ct else { unreachable!() };
+            let PiExpr(a, ty_a, ty_r) = ct else {
+                unreachable!()
+            };
             is_expr_check_same(r1, r2, ty_r, &env_ext(env, a.into(), ty_a))
         }
-        _ => false
+        _ => false,
     };
     tc_log_end!("=> {}", ret);
     ret

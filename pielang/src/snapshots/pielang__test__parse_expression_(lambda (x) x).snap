@@ -1,5 +1,5 @@
 ---
-source: src/test.rs
+source: pielang/src/test.rs
 description: (lambda (x) x)
 expression: parser.parse(e)
 ---
@@ -10,7 +10,7 @@ Ok(
             14,
         ),
         [
-            Symbol(
+            Ident(
                 Span(
                     9,
                     10,
@@ -18,7 +18,7 @@ Ok(
                 "x",
             ),
         ],
-        Identifier(
+        Ident(
             Span(
                 12,
                 13,
