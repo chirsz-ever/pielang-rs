@@ -4,6 +4,34 @@ RIIR [Pie: A Little Language with Dependent Types](https://github.com/the-little
 
 [The Pie Reference](https://docs.racket-lang.org/pie)
 
+## Running
+
+```txt
+cargo run -- [FLAGS] [OPTIONS] [--] [FILE]
+
+FLAGS:
+    -c, --check      Only run check type
+    -h, --help       Prints help information
+    -i, --repl       Open REPL
+    -V, --version    Prints version information
+
+OPTIONS:
+    -e, --eval <exprs>...    Read and eval a pie expression from command line arguments
+
+ARGS:
+    <FILE>    Input file, use `-` to read from stdin
+```
+
+## Passes
+
+- source code into `pielang::ast::Expr`
+  - addtional checks for global statements
+- `pielang::ast::Expr` into `pielang::ast2::Expr` (TDDO)
+  - checking the λ-expressions do not use built-in names as variable names
+  - checking built-in names have correct number of arguments
+  - checking no unbound variables, and attaching De Bruijn indices
+- Type checking `pielang::ast2::Expr` and elaboration into `pielang::core::Expr`
+
 ## TODO
 
 - [x] `the` expression

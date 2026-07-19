@@ -11,7 +11,7 @@ type Env = tc::Env;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
-    name = "pie-rs",
+    name = "pielang-rs",
     about = "Pie language interpreter implemented with Rust"
 )]
 struct Opt {
