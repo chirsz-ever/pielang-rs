@@ -36,9 +36,9 @@ pub Grammer = HeaderComment* <GlobalStatemantList>;
 
 pub GlobalStatemantList = <GlobalStatemant*>;
 
-Ident: Ident<'input> = {
+Ident: Id<'input> = {
     <l:@L> <ident:IDENT> <r:@L> => {
-        Ident(Span(l, r), ident)
+        Id(Span(l, r), ident)
     }
 }
 

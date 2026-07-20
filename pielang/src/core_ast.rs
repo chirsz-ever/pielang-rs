@@ -393,7 +393,7 @@ pub fn unfold(e: &ast::Expr) -> Result<Expr<Never, Ref<str>>, Error> {
         LambdaExpr(_, args, body) => {
             let mut e = unfold(body)?;
             // 注意从后向前的顺序
-            for ast::Ident(_, sym) in args.iter().rev() {
+            for ast::Id(_, sym) in args.iter().rev() {
                 e = Expr::LambdaExpr(self::Argument::Symbol((*sym).into()), Ref::new(e));
             }
             e
@@ -405,7 +405,7 @@ pub fn unfold(e: &ast::Expr) -> Result<Expr<Never, Ref<str>>, Error> {
                 .map(|(_, ty)| unfold(ty))
                 .collect::<Result<_, Error>>()?;
             let mut e = body;
-            for (i, (ast::Ident(_, sym), _)) in args.iter().enumerate().rev() {
+            for (i, (ast::Id(_, sym), _)) in args.iter().enumerate().rev() {
                 let has_body_ref = occurs(&e, sym) || types[i + 1..].iter().any(|t| occurs(t, sym));
                 let arg = if has_body_ref {
                     self::Argument::Symbol((*sym).into())
@@ -433,7 +433,7 @@ pub fn unfold(e: &ast::Expr) -> Result<Expr<Never, Ref<str>>, Error> {
                 .map(|(_, ty)| unfold(ty))
                 .collect::<Result<_, Error>>()?;
             let mut e = body;
-            for (i, (ast::Ident(_, sym), _)) in args.iter().enumerate().rev() {
+            for (i, (ast::Id(_, sym), _)) in args.iter().enumerate().rev() {
                 let has_body_ref = occurs(&e, sym) || types[i + 1..].iter().any(|t| occurs(t, sym));
                 let arg = if has_body_ref {
                     self::Argument::Symbol((*sym).into())

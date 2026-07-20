@@ -4,10 +4,10 @@ use crate::utils::{LocatedError, Ref, Span};
 #[derive(Debug, Clone)]
 pub enum GlobalStatemant<'a> {
     /// `(claim varname type)`
-    Claim(Span, Ident<'a>, Type<'a>),
+    Claim(Span, Id<'a>, Type<'a>),
 
     /// `(define varname expression)`
-    Define(Span, Ident<'a>, Expr<'a>),
+    Define(Span, Id<'a>, Expr<'a>),
 
     /// `(check-same type expression expression)`
     CheckSame(Span, Expr<'a>, Expr<'a>, Expr<'a>),
@@ -18,7 +18,7 @@ pub enum GlobalStatemant<'a> {
 
 /// 包含位置信息的一个符号
 #[derive(Debug, Clone)]
-pub struct Ident<'a>(pub Span, pub &'a str);
+pub struct Id<'a>(pub Span, pub &'a str);
 
 /// 表达式包含位置信息
 #[derive(Debug, Clone)]
@@ -37,21 +37,21 @@ pub enum Expr<'a> {
     // 以下为一些特殊语法项
 
     /// `(λ (ident+) expr)`
-    LambdaExpr(Span, Vec<Ident<'a>>, Ref<Expr<'a>>),
+    LambdaExpr(Span, Vec<Id<'a>>, Ref<Expr<'a>>),
 
     /// `(Π ((ident expr)+) expr)`
-    PiExpr(Span, Vec<(Ident<'a>, Type<'a>)>, Ref<Expr<'a>>),
+    PiExpr(Span, Vec<(Id<'a>, Type<'a>)>, Ref<Expr<'a>>),
 
     /// `(→ expr+ expr)`
     ArrowExpr(Span, Vec<Type<'a>>),
 
     /// `(Σ ((ident expr)+) expr)`
-    SigmaExpr(Span, Vec<(Ident<'a>, Type<'a>)>, Ref<Expr<'a>>),
+    SigmaExpr(Span, Vec<(Id<'a>, Type<'a>)>, Ref<Expr<'a>>),
 }
 
-impl<'a> From<Ident<'a>> for Expr<'a> {
-    fn from(value: Ident<'a>) -> Self {
-        let Ident(span, id) = value;
+impl<'a> From<Id<'a>> for Expr<'a> {
+    fn from(value: Id<'a>) -> Self {
+        let Id(span, id) = value;
         Expr::Ident(span, id)
     }
 }
@@ -141,7 +141,7 @@ pub fn to_statement<'a>(e: Expr<'a>) -> Result<GlobalStatemant<'a>, LocatedError
                         erk: format!("claim: {} is not a valid Pie name", id),
                     });
                 }
-                Claim(span, crate::ast::Ident(span_id, id), ty)
+                Claim(span, crate::ast::Id(span_id, id), ty)
             }
             Ident(_, "define") => {
                 let args = exprs.len() - 1;
@@ -163,7 +163,7 @@ pub fn to_statement<'a>(e: Expr<'a>) -> Result<GlobalStatemant<'a>, LocatedError
                         erk: format!("define: {} is not a valid Pie name", id),
                     });
                 }
-                Define(span, crate::ast::Ident(span_id, id), body)
+                Define(span, crate::ast::Id(span_id, id), body)
             }
             Ident(_, "check-same") => {
                 let args = exprs.len() - 1;
@@ -201,8 +201,8 @@ pub fn is_builtin_name(name: &str) -> bool {
         || PIE_KEYWORDS.contains(&name)
 }
 
-pub fn check_builtin_names<'a>(args: impl IntoIterator<Item = &'a Ident<'a>>) -> Result<(), LocatedError<String>> {
-    for Ident(span, id) in args {
+pub fn check_builtin_names<'a>(args: impl IntoIterator<Item = &'a Id<'a>>) -> Result<(), LocatedError<String>> {
+    for Id(span, id) in args {
         if is_builtin_name(id) {
             return Err(LocatedError {
                 loc: Some(*span),

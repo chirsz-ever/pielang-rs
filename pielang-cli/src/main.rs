@@ -1,5 +1,5 @@
 use anyhow::bail;
-use pielang::ast::Ident;
+use pielang::ast::Id;
 use pielang::core_ast::DBIPPrint as dpp;
 use pielang::type_check as tc;
 use rustyline::KeyEvent;
@@ -162,10 +162,10 @@ fn interpret_file(
         .map_err(|err| anyhow::anyhow!("{}", err))?;
     for stmt in stats {
         match stmt {
-            Claim(_, Ident(_, sym), ty) => {
+            Claim(_, Id(_, sym), ty) => {
                 process_claim(sym, &ty, env)?;
             }
-            Define(_, Ident(_, sym), expr) => {
+            Define(_, Id(_, sym), expr) => {
                 process_define(sym, &expr, env)?;
             }
             Expression(expr) => {
@@ -211,11 +211,11 @@ fn repl(check_type_only: bool, env: &mut Env) -> anyhow::Result<()> {
                                         Err(err) => eprintln!("Error: {:?}", err),
                                     }
                                 }
-                                Define(_, Ident(_, sym), expr) => {
+                                Define(_, Id(_, sym), expr) => {
                                     process_define(sym, &expr, env)
                                         .unwrap_or_else(|err| eprintln!("Error: {:?}", err));
                                 }
-                                Claim(_, Ident(_, sym), ty) => {
+                                Claim(_, Id(_, sym), ty) => {
                                     process_claim(sym, &ty, env)
                                         .unwrap_or_else(|err| eprintln!("Error: {:?}", err));
                                 }
