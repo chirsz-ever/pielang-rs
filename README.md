@@ -26,11 +26,11 @@ ARGS:
 
 - source code into `pielang::ast::Expr`
   - addtional checks for global statements
-- `pielang::ast::Expr` into `pielang::ast2::Expr` (TDDO)
+- checking `pielang::ast::Expr` syntax
   - checking the λ-expressions do not use built-in names as variable names
   - checking built-in names have correct number of arguments
-  - checking no unbound variables, and attaching De Bruijn indices
-- Type checking `pielang::ast2::Expr` and elaboration into `pielang::core::Expr`
+  - checking no unbound variables
+- Type checking `pielang::ast::Expr` and elaboration into `pielang::core::Expr`
 
 ## TODO
 

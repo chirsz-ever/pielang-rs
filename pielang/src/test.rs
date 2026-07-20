@@ -1,4 +1,6 @@
 use crate::ast::GlobalStatemant::CheckSame;
+use crate::ast::check_syntax;
+use crate::utils::StackMap;
 use crate::{Never, ast, type_check as tc};
 use crate::{core_ast, scope_check};
 use core_ast::DBIPPrint as dpp;
@@ -100,8 +102,7 @@ fn check_synthesize(expr: &str) -> anyhow::Result<String> {
     let expr = parser
         .parse(expr)
         .map_err(|err| anyhow::anyhow!("{}", err))?;
-    let unfold_expr = core_ast::unfold(&expr)?;
-    let e_dbi = scope_check::to_dbi(&unfold_expr, &scope_check::default_environment())?;
+    let e_dbi = transform_expression(&expr)?;
     let env = tc::Env::new();
     let mut output = String::new();
     match tc::synthesize(&e_dbi, &env) {
@@ -117,6 +118,7 @@ fn check_synthesize(expr: &str) -> anyhow::Result<String> {
 }
 
 fn transform_expression(expr: &ast::Expr) -> Result<core_ast::Expr<Never>, anyhow::Error> {
+    check_syntax(expr, &StackMap::new())?;
     let unfold_expr = core_ast::unfold(expr)?;
     let dbi = scope_check::to_dbi(&unfold_expr, &scope_check::default_environment())?;
     Ok(dbi)
@@ -183,10 +185,19 @@ fn synthesize_tests() -> anyhow::Result<()> {
         "(the 0 'a)",
         "(the Nat U)",
         "(the U 'a)",
+        // scope error
+        "x",
+        "add1",
+        "(zero 0)",
+        "(λ (Nat) 0)",
+        "(λ (x) y)",
+        "(λ (x) add1)",
+        "(Π ((zero Nat)) Nat)",
+        "(Σ ((zero Nat)) Nat)",
     ];
     for s in exprs {
         eprintln!("{} ... ", s);
-        let output = check_synthesize(s)?;
+        let output = check_synthesize(s).unwrap_or_else(|e|format!("Error: {e}"));
         insta::with_settings!({
             description => s,
         }, {

@@ -1,0 +1,6 @@
+---
+source: pielang/src/test.rs
+description: (λ (x) add1)
+expression: output
+---
+Error: 8:12: add1 need 1 arguments

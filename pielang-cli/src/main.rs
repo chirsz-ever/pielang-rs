@@ -1,5 +1,5 @@
 use anyhow::bail;
-use pielang::ast::Id;
+use pielang::ast::{Id, check_syntax};
 use pielang::core_ast::DBIPPrint as dpp;
 use pielang::type_check as tc;
 use rustyline::KeyEvent;
@@ -142,8 +142,9 @@ fn transform_expression(
     expr: &pielang::ast::Expr,
     env: &Env,
 ) -> anyhow::Result<pielang::core_ast::Expr<pielang::Never>> {
-    let unfold_expr = pielang::core_ast::unfold(expr)?;
     let env_1 = env.iter().map(|(k, _)| (k.as_deref(), ())).collect();
+    check_syntax(expr, &env_1)?;
+    let unfold_expr = pielang::core_ast::unfold(expr)?;
     Ok(pielang::scope_check::to_dbi(&unfold_expr, &env_1)?)
 }
 

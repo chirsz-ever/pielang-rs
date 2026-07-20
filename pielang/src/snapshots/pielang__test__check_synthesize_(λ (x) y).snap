@@ -1,0 +1,6 @@
+---
+source: pielang/src/test.rs
+description: (λ (x) y)
+expression: output
+---
+Error: 8:9: undefined identifier: y

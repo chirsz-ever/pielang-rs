@@ -1,0 +1,6 @@
+---
+source: pielang/src/test.rs
+description: x
+expression: output
+---
+Error: 0:1: undefined identifier: x

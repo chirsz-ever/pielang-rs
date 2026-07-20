@@ -1,0 +1,6 @@
+---
+source: pielang/src/test.rs
+description: (λ (Nat) 0)
+expression: output
+---
+Error: 5:8: Nat is not a valid Pie name

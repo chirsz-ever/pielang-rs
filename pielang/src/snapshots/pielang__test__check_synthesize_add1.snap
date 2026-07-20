@@ -1,0 +1,6 @@
+---
+source: pielang/src/test.rs
+description: add1
+expression: output
+---
+Error: 0:4: add1 need 1 arguments

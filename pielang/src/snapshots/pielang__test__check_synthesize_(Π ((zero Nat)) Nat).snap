@@ -1,0 +1,6 @@
+---
+source: pielang/src/test.rs
+description: (Π ((zero Nat)) Nat)
+expression: output
+---
+Error: 6:10: zero is not a valid Pie name
