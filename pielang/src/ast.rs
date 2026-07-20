@@ -131,7 +131,7 @@ pub fn to_statement<'a>(e: Expr<'a>) -> Result<GlobalStatemant<'a>, LocatedError
                 };
                 let Ident(span_id, id) = id else {
                     return Err(LocatedError {
-                        loc: Some(get_span(&id)),
+                        loc: Some(*get_span(&id)),
                         erk: "claim: expect identifier".to_string(),
                     });
                 };
@@ -153,7 +153,7 @@ pub fn to_statement<'a>(e: Expr<'a>) -> Result<GlobalStatemant<'a>, LocatedError
                 };
                 let Ident(span_id, id) = id else {
                     return Err(LocatedError {
-                        loc: Some(get_span(&id)),
+                        loc: Some(*get_span(&id)),
                         erk: "define: expect identifier".to_string(),
                     });
                 };
@@ -182,16 +182,16 @@ pub fn to_statement<'a>(e: Expr<'a>) -> Result<GlobalStatemant<'a>, LocatedError
     Ok(stat)
 }
 
-pub fn get_span(e: &Expr) -> Span {
+pub fn get_span<'a>(e: &'a Expr<'a>) -> &'a Span {
     match e {
-        Expr::NatLit(span, _) => *span,
-        Expr::AtomLit(span, _) => *span,
-        Expr::Ident(span, _) => *span,
-        Expr::App(span, _) => *span,
-        Expr::LambdaExpr(span, _, _) => *span,
-        Expr::PiExpr(span, _, _) => *span,
-        Expr::ArrowExpr(span, _) => *span,
-        Expr::SigmaExpr(span, _, _) => *span,
+        Expr::NatLit(span, _) => span,
+        Expr::AtomLit(span, _) => span,
+        Expr::Ident(span, _) => span,
+        Expr::App(span, _) => span,
+        Expr::LambdaExpr(span, _, _) => span,
+        Expr::PiExpr(span, _, _) => span,
+        Expr::ArrowExpr(span, _) => span,
+        Expr::SigmaExpr(span, _, _) => span,
     }
 }
 
