@@ -34,7 +34,7 @@ pub enum Expr<'a> {
     /// 函数调用、值的构造（introduce）、解构（eliminate），以及 the 表达式
     App(Span, Vec<Expr<'a>>),
 
-    /// 以下为一些特殊语法项
+    // 以下为一些特殊语法项
 
     /// `(λ (ident+) expr)`
     LambdaExpr(Span, Vec<Ident<'a>>, Ref<Expr<'a>>),
