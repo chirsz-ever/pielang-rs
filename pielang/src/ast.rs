@@ -1,4 +1,4 @@
-use crate::utils::{LocatedError, Ref, Span};
+use crate::utils::{LocatedError, Ref, Span, StackMap};
 
 /// 顶层语句允许 define 语句、claim 语句, check-same 语句和表达式。
 #[derive(Debug, Clone)]
@@ -35,7 +35,6 @@ pub enum Expr<'a> {
     App(Span, Vec<Expr<'a>>),
 
     // 以下为一些特殊语法项
-
     /// `(λ (ident+) expr)`
     LambdaExpr(Span, Vec<Id<'a>>, Ref<Expr<'a>>),
 
@@ -201,13 +200,99 @@ pub fn is_builtin_name(name: &str) -> bool {
         || PIE_KEYWORDS.contains(&name)
 }
 
-pub fn check_builtin_names<'a>(args: impl IntoIterator<Item = &'a Id<'a>>) -> Result<(), LocatedError<String>> {
+pub fn check_builtin_names<'a>(
+    args: impl IntoIterator<Item = &'a Id<'a>>,
+) -> Result<(), LocatedError<String>> {
     for Id(span, id) in args {
         if is_builtin_name(id) {
             return Err(LocatedError {
                 loc: Some(*span),
                 erk: format!("{} is not a valid Pie name", id),
             });
+        }
+    }
+    Ok(())
+}
+
+/// - checking the λ-expressions do not use built-in names as variable names
+/// - checking built-in names have correct number of arguments
+/// - checking no unbound variables
+pub fn check_syntax<'a>(
+    expr: &'a Expr<'a>,
+    env: &StackMap<Option<Ref<str>>, ()>,
+) -> Result<(), LocatedError<String>> {
+    use crate::ast::Id;
+    use Expr::*;
+    'm: {
+        match expr {
+            NatLit(_, _) | AtomLit(_, _) => {}
+            Ident(sp, id) => {
+                if PIE_BUILTIN_SINGLETONS.contains(id) {
+                    break 'm;
+                }
+                if let Some((_, argc)) = PIE_BUILTIN_FUNCTIONS.iter().find(|(i, _)| i == id) {
+                    return Err(LocatedError {
+                        loc: Some(*sp),
+                        erk: format!("{} need {} arguments", id, argc),
+                    });
+                }
+                if !env
+                    .iter()
+                    .any(|(k, _)| k.as_deref().is_some_and(|k| &*k == *id))
+                {
+                    return Err(LocatedError {
+                        loc: Some(*sp),
+                        erk: format!("undefined identifier: {}", id),
+                    });
+                }
+            }
+            App(sp, args) => {
+                match &**args {
+                    [Ident(sp_id, id), args @ ..] => {
+                        // TODO: check Universe Hierarchy extension
+                        // zero, nil, ...
+                        if PIE_BUILTIN_SINGLETONS.contains(id) && *id != "U" {
+                            return Err(LocatedError {
+                                loc: Some(*sp_id),
+                                erk: format!("{} cannot be caller", id),
+                            });
+                        }
+                        // (add1 e), (= e e e), (same e), ...
+                        else if let Some((_, argn)) = PIE_BUILTIN_FUNCTIONS.iter().find(|(i, _)| i == id)
+                        {
+                            if args.len() != *argn {
+                                return Err(LocatedError {
+                                    loc: Some(*sp),
+                                    erk: format!(
+                                        "{} need {} arguments, got {}",
+                                        id,
+                                        argn,
+                                        args.len()
+                                    ),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            LambdaExpr(_, args, body) => {
+                for Id(sp, id) in args {
+                    if is_builtin_name(id) {
+                        return Err(LocatedError {
+                            loc: Some(*sp),
+                            erk: format!("lambda: {} is not a valid name for arguments", id),
+                        });
+                    }
+                }
+                let mut new_env = env.clone();
+                for Id(_, id) in args {
+                    new_env = new_env.insert(Some((*id).into()), ());
+                }
+                check_syntax(body, &new_env)?;
+            }
+            PiExpr(sp, aegs, body) => todo!(),
+            ArrowExpr(sp, args) => todo!(),
+            SigmaExpr(sp, aegs, body) => todo!(),
         }
     }
     Ok(())
