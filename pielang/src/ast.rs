@@ -1,4 +1,5 @@
 use crate::utils::{LocatedError, Ref, Span, StackMap};
+use core::fmt;
 
 /// 顶层语句允许 define 语句、claim 语句, check-same 语句和表达式。
 #[derive(Debug, Clone)]
@@ -20,6 +21,12 @@ pub enum GlobalStatemant<'a> {
 #[derive(Debug, Clone)]
 pub struct Id<'a>(pub Span, pub &'a str);
 
+impl<'a> fmt::Display for Id<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.1)
+    }
+}
+
 /// 表达式包含位置信息
 #[derive(Debug, Clone)]
 pub enum Expr<'a> {
@@ -32,7 +39,7 @@ pub enum Expr<'a> {
     Ident(Span, &'a str),
 
     /// 函数调用、值的构造（introduce）、解构（eliminate），以及 the 表达式
-    App(Span, Vec<Expr<'a>>),
+    AppExpr(Span, Vec<Expr<'a>>),
 
     // 以下为一些特殊语法项
     /// `(λ (ident+) expr)`
@@ -46,6 +53,64 @@ pub enum Expr<'a> {
 
     /// `(Σ ((ident expr)+) expr)`
     SigmaExpr(Span, Vec<(Id<'a>, Type<'a>)>, Ref<Expr<'a>>),
+}
+
+impl<'a> fmt::Display for Expr<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use Expr::*;
+        match self {
+            NatLit(_, n) => write!(f, "{n}")?,
+            AtomLit(_, a) => write!(f, "'{a}")?,
+            Ident(_, id) => write!(f, "{id}")?,
+            AppExpr(_, args) => {
+                write!(f, "(")?;
+                fmt_args(f, &args[..])?;
+                write!(f, ")")?;
+            }
+            LambdaExpr(_, args, body) => {
+                write!(f, "(λ (")?;
+                fmt_args(f, &args[..])?;
+                write!(f, ") {})", body)?;
+            }
+            PiExpr(_, args, body) => {
+                write!(f, "(Π (")?;
+                fmt_args_compact(f, &args[..])?;
+                write!(f, ") {})", body)?;
+            }
+            ArrowExpr(_, args) => {
+                write!(f, "(→ ")?;
+                fmt_args(f, &args[..])?;
+                write!(f, ")")?;
+            }
+            SigmaExpr(_, args, body) => {
+                write!(f, "(Π (")?;
+                fmt_args_compact(f, &args[..])?;
+                write!(f, ") {})", body)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+fn fmt_args(f: &mut fmt::Formatter<'_>, args: &[impl fmt::Display]) -> fmt::Result {
+    write!(f, "{}", &args[0])?;
+    for a in &args[1..] {
+        write!(f, " {}", a)?;
+    }
+    Ok(())
+}
+
+fn fmt_args_compact(
+    f: &mut fmt::Formatter<'_>,
+    args: &[(impl fmt::Display, impl fmt::Display)],
+) -> fmt::Result {
+    let (a, b) = &args[0];
+    write!(f, "({} {})", a, b)?;
+    for arg in &args[1..] {
+        let (a, b) = arg;
+        write!(f, "({} {})", a, b)?;
+    }
+    Ok(())
 }
 
 impl<'a> From<Id<'a>> for Expr<'a> {
@@ -119,7 +184,7 @@ pub fn to_statement<'a>(e: Expr<'a>) -> Result<GlobalStatemant<'a>, LocatedError
     use Expr::*;
     use GlobalStatemant::*;
     let stat = match e {
-        App(span, exprs) => match &exprs[0] {
+        AppExpr(span, exprs) => match &exprs[0] {
             Ident(_, "claim") => {
                 let args = exprs.len() - 1;
                 let Ok([_, id, ty]): Result<[Expr<'_>; _], _> = exprs.try_into() else {
@@ -174,7 +239,7 @@ pub fn to_statement<'a>(e: Expr<'a>) -> Result<GlobalStatemant<'a>, LocatedError
                 };
                 CheckSame(span, ty, e1, e2)
             }
-            _ => Expression(App(span, exprs)),
+            _ => Expression(AppExpr(span, exprs)),
         },
         _ => Expression(e),
     };
@@ -186,7 +251,7 @@ pub fn get_span<'a>(e: &'a Expr<'a>) -> &'a Span {
         Expr::NatLit(span, _) => span,
         Expr::AtomLit(span, _) => span,
         Expr::Ident(span, _) => span,
-        Expr::App(span, _) => span,
+        Expr::AppExpr(span, _) => span,
         Expr::LambdaExpr(span, _, _) => span,
         Expr::PiExpr(span, _, _) => span,
         Expr::ArrowExpr(span, _) => span,
@@ -246,7 +311,7 @@ pub fn check_syntax<'a>(
                     });
                 }
             }
-            App(sp, exprs) => {
+            AppExpr(sp, exprs) => {
                 let exprs_to_check;
                 match &**exprs {
                     [Ident(sp_id, id), args @ ..] => {
@@ -334,4 +399,18 @@ pub fn check_syntax<'a>(
         }
     }
     Ok(())
+}
+
+pub fn to_builtin_name(x: &str) -> &'static str {
+    for n in PIE_BUILTIN_SINGLETONS {
+        if x == n {
+            return n;
+        }
+    }
+    for n in PIE_BUILTIN_FUNCTIONS.map(|x| x.0) {
+        if x == n {
+            return n;
+        }
+    }
+    panic!("{x} is not a builtin name")
 }

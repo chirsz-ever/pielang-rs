@@ -13,7 +13,7 @@ pub type Never = std::convert::Infallible;
 lalrpop_mod!(#[allow(clippy::type_complexity)] pub syntax);
 
 pub mod ast;
-pub mod core_ast;
+pub mod core;
 pub mod scope_check;
 #[cfg(test)]
 mod test;

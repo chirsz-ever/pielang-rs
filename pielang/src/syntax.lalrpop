@@ -94,7 +94,7 @@ pub Expr: Expr<'input> = {
     <l:@L> <e:Enclosed<(<Expr+> <Expr>)>> <r:@R> => {
         let (mut exprs, last) = e;
         exprs.push(last);
-        Expr::App(Span(l, r), exprs)
+        Expr::AppExpr(Span(l, r), exprs)
     }
 }
 

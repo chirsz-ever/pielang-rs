@@ -1,9 +1,9 @@
 use crate::ast::GlobalStatemant::CheckSame;
 use crate::ast::check_syntax;
+use crate::core;
 use crate::utils::StackMap;
-use crate::{Never, ast, type_check as tc};
-use crate::{core_ast, scope_check};
-use core_ast::DBIPPrint as dpp;
+use crate::{ast, type_check as tc};
+use core::DBIPPrint as dpp;
 
 #[test]
 fn check_name() {
@@ -102,10 +102,10 @@ fn check_synthesize(expr: &str) -> anyhow::Result<String> {
     let expr = parser
         .parse(expr)
         .map_err(|err| anyhow::anyhow!("{}", err))?;
-    let e_dbi = transform_expression(&expr)?;
+
     let env = tc::Env::new();
     let mut output = String::new();
-    match tc::synthesize(&e_dbi, &env) {
+    match tc::synthesize(&expr, &env) {
         Ok((ty, e_o)) => {
             output += &format!("type: {}\n", dpp(&ty, &env));
             output += &format!("expr: {}\n", dpp(&e_o, &env));
@@ -117,11 +117,9 @@ fn check_synthesize(expr: &str) -> anyhow::Result<String> {
     Ok(output)
 }
 
-fn transform_expression(expr: &ast::Expr) -> Result<core_ast::Expr<Never>, anyhow::Error> {
+fn check_expression(expr: &ast::Expr) -> anyhow::Result<()> {
     check_syntax(expr, &StackMap::new())?;
-    let unfold_expr = core_ast::unfold(expr)?;
-    let dbi = scope_check::to_dbi(&unfold_expr, &scope_check::default_environment())?;
-    Ok(dbi)
+    Ok(())
 }
 
 fn check_same(expr: &str) -> anyhow::Result<String> {
@@ -133,9 +131,9 @@ fn check_same(expr: &str) -> anyhow::Result<String> {
     let CheckSame(_, ty, e1, e2) = expr else {
         anyhow::bail!("Expected check-same statement");
     };
-    let e1 = transform_expression(&e1)?;
-    let e2 = transform_expression(&e2)?;
-    let ty = transform_expression(&ty)?;
+    check_expression(&e1)?;
+    check_expression(&e2)?;
+    check_expression(&ty)?;
     let env = tc::Env::new();
     let (_, ty_o) = tc::resolve_type(&ty, &env)?;
     let e1_o = tc::synthesize_with_type(&e1, &ty_o, &env)?;
@@ -197,7 +195,7 @@ fn synthesize_tests() -> anyhow::Result<()> {
     ];
     for s in exprs {
         eprintln!("{} ... ", s);
-        let output = check_synthesize(s).unwrap_or_else(|e|format!("Error: {e}"));
+        let output = check_synthesize(s).unwrap_or_else(|e| format!("Error: {e}"));
         insta::with_settings!({
             description => s,
         }, {

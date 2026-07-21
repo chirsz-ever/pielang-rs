@@ -1,6 +1,6 @@
 use anyhow::bail;
 use pielang::ast::{Id, check_syntax};
-use pielang::core_ast::DBIPPrint as dpp;
+use pielang::core::DBIPPrint as dpp;
 use pielang::type_check as tc;
 use rustyline::KeyEvent;
 use std::fs::File;
@@ -80,15 +80,11 @@ fn main() -> anyhow::Result<()> {
 fn process_expression(
     expr: &pielang::ast::Expr,
     env: &Env,
-    check_type_only: bool,
+    _check_type_only: bool,
 ) -> anyhow::Result<()> {
-    let e_dbi = transform_expression(expr, env)?;
-    if check_type_only {
-        let (ty, e_o) = tc::synthesize(&e_dbi, env)?;
-        println!("(the {} {})", dpp(&ty, env), dpp(&e_o, env));
-    } else {
-        todo!("Implement evaluation of expressions");
-    }
+    check_expression(expr, env)?;
+    let (ty_o, e_o) = tc::synthesize(expr, env)?;
+    println!("(the {} {})", dpp(&ty_o, env), dpp(&e_o, env));
     Ok(())
 }
 
@@ -98,12 +94,12 @@ fn process_check_same(
     e2: &pielang::ast::Expr,
     env: &Env,
 ) -> anyhow::Result<()> {
-    let e1 = transform_expression(e1, env)?;
-    let e2 = transform_expression(e2, env)?;
-    let ty = transform_expression(ty, env)?;
-    let (_, ty_o) = tc::resolve_type(&ty, env)?;
-    let e1_o = tc::synthesize_with_type(&e1, &ty_o, env)?;
-    let e2_o = tc::synthesize_with_type(&e2, &ty_o, env)?;
+    check_expression(e1, env)?;
+    check_expression(e2, env)?;
+    check_expression(ty, env)?;
+    let (_, ty_o) = tc::resolve_type(ty, env)?;
+    let e1_o = tc::synthesize_with_type(e1, &ty_o, env)?;
+    let e2_o = tc::synthesize_with_type(e2, &ty_o, env)?;
     log::trace!("-----");
     tc::expr_check_same(&e1_o, &e2_o, &ty_o, env)?;
     Ok(())
@@ -116,36 +112,29 @@ fn process_claim(sym: &str, ty: &pielang::ast::Expr, env: &mut Env) -> anyhow::R
     {
         bail!("cannot reclaim `{}`", sym);
     }
-    let ty = transform_expression(ty, env)?;
-    let (_, ty_o) = tc::resolve_type(&ty, env)?;
+    check_expression(ty, env)?;
+    let (_, ty_o) = tc::resolve_type(ty, env)?;
     *env = env.insert(Some(sym.into()), (ty_o, Default::default()));
     Ok(())
 }
 
 fn process_define(sym: &str, expr: &pielang::ast::Expr, env: &mut Env) -> anyhow::Result<()> {
-    let Some((_, (ty, expr_ref))) = env
-        .iter()
-        .find(|(k, _)| k.as_ref().is_some_and(|k| &**k == sym))
-    else {
+    let Some((ty, expr_ref)) = env.get(&Some(sym.into())) else {
         bail!("cannot define `{}` before claim", sym);
     };
     if expr_ref.borrow().is_some() {
         bail!("cannot redefine `{}`", sym);
     }
-    let e_dbi = transform_expression(expr, env)?;
-    let e_o = tc::synthesize_with_type(&e_dbi, ty, env)?;
-    *expr_ref.borrow_mut() = Some(e_o);
+    check_expression(expr, env)?;
+    let e_o = tc::synthesize_with_type(expr, ty, env)?;
+    expr_ref.replace(Some(e_o));
     Ok(())
 }
 
-fn transform_expression(
-    expr: &pielang::ast::Expr,
-    env: &Env,
-) -> anyhow::Result<pielang::core_ast::Expr<pielang::Never>> {
+fn check_expression(expr: &pielang::ast::Expr, env: &Env) -> anyhow::Result<()> {
     let env_1 = env.iter().map(|(k, _)| (k.as_deref(), ())).collect();
     check_syntax(expr, &env_1)?;
-    let unfold_expr = pielang::core_ast::unfold(expr)?;
-    Ok(pielang::scope_check::to_dbi(&unfold_expr, &env_1)?)
+    Ok(())
 }
 
 fn interpret_file(
