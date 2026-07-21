@@ -4,7 +4,7 @@ description: "[the Nat 1]"
 expression: parser.parse(e)
 ---
 Ok(
-    App(
+    AppExpr(
         Span(
             0,
             11,

@@ -1,7 +1,7 @@
 ---
-source: src/test.rs
+source: pielang/src/test.rs
 description: zero
 expression: output
 ---
 type: Nat
-expr: zero
+expr: 0

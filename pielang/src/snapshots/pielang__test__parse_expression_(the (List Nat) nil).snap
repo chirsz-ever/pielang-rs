@@ -4,7 +4,7 @@ description: (the (List Nat) nil)
 expression: parser.parse(e)
 ---
 Ok(
-    App(
+    AppExpr(
         Span(
             0,
             20,
@@ -17,7 +17,7 @@ Ok(
                 ),
                 "the",
             ),
-            App(
+            AppExpr(
                 Span(
                     5,
                     15,

@@ -93,7 +93,7 @@ impl<'a> fmt::Display for Expr<'a> {
 }
 
 fn fmt_args(f: &mut fmt::Formatter<'_>, args: &[impl fmt::Display]) -> fmt::Result {
-    write!(f, "{}", &args[0])?;
+    write!(f, "{}", args[0])?;
     for a in &args[1..] {
         write!(f, " {}", a)?;
     }

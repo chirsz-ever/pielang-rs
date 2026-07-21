@@ -328,7 +328,8 @@ pub fn synthesize_with_type(
             let arg = (*arg).into();
             if rargs.is_empty() {
                 // FunI-1
-                let r_o = synthesize_with_type(r, ty_ret, &env_ext_arg(env, pi_arg, ty_arg))?;
+                // FIXME: variable scope
+                let r_o = synthesize_with_type(r, ty_ret, &env_ext(env, &arg, ty_arg))?;
                 Lambda(Argument::Symbol(arg), Ref::new(r_o))
             } else {
                 // FunI-2
@@ -341,7 +342,7 @@ pub fn synthesize_with_type(
             }
         }
         // ΣI
-        (A(_, args), Sigma(arg, ty_a, ty_d)) if let Ident(_, "cons") = args[1] => {
+        (A(_, args), Sigma(arg, ty_a, ty_d)) if let Ident(_, "cons") = args[0] => {
             let [_, a, d] = &**args else { unreachable!() };
             let a_o = synthesize_with_type(a, ty_a, env)?;
             let d_o = synthesize_with_type(d, &substitute_arg(ty_d, arg, &a_o, env), env)?;
@@ -452,6 +453,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
         Ident(_, ty @ ("Atom" | "Nat" | "Trivial" | "Absurd")) => {
             (U!(), I(ast::to_builtin_name(ty)))
         }
+        Ident(_, "U") => (U!(Nat(1)), U!(Nat(0))),
         // Hypothesis
         // TODO: de bruijn
         Ident(_, id) => {
@@ -775,8 +777,28 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
 
     // TODO: 改进 El 规则
     let ret = match e {
-        // FunF-1
-        PiExpr(_, _args, _body) => todo!("resolve_type: PiExpr"),
+        // FunF-1, FunF-2
+        PiExpr(_, _args, _body) => {
+            todo!("resolve_type: PiExpr")
+        }
+        // FunF->1, FunF->2
+        ArrowExpr(sp, args) => {
+            match args.as_slice() {
+                // FunF->1
+                [ty_a, ty_r] => {
+                    let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
+                    let (l_r, ty_r_o) = resolve_type(ty_r, env)?;
+                    (std::cmp::max(l_a, l_r), pi!(ty_a_o, ty_r_o))
+                }
+                // FunF->2
+                [ty_a, rargs @ ..] => {
+                    let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
+                    let (l_r, ty_r_o) = resolve_type(&AppExpr(*sp, rargs.to_vec()), env)?;
+                    (std::cmp::max(l_a, l_r), pi!(ty_a_o, ty_r_o))
+                }
+                _ => unreachable!(),
+            }
+        }
         // SigmaF-1
         SigmaExpr(_, _args, _body) => todo!("resolve_type: SigmaExpr"),
         NatLit(_, _) | AtomLit(_, _) => {
@@ -834,6 +856,7 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
         }
         // 内建单例对象
         Ident(_, ty @ ("Atom" | "Nat" | "Trivial" | "Absurd")) => (0, I(ast::to_builtin_name(ty))),
+        Ident(_, "U") => (1, U!(Nat(0))),
         // 非类型单例对象
         Ident(_, e @ ("zero" | "sole" | "nil" | "vecnil")) => {
             return Err(ErrorKind::NotType(e.to_string()).into());
@@ -881,6 +904,11 @@ fn is_type_check_same(ty1: &core::Expr, ty2: &core::Expr, env: &Env) -> bool {
         // TODO: de bruijn
         (Identifier(id1, _idx1), Identifier(id2, _idx2)) => id1 == id2,
         (I(ty1), I(ty2)) => ty1 == ty2,
+        (Sigma(a1, ty_a1, ty_r1), Sigma(_a2, ty_a2, ty_r2)) => {
+            // FIXME: variable scope
+            is_type_check_same(ty_a1, ty_a2, env)
+                && is_type_check_same(ty_r1, ty_r2, &env_ext_arg(env, a1, ty_a1))
+        }
         (S(f1, args1), S(f2, args2)) => match (&**f1, &**args1, &**f2, &**args2) {
             ("List", [ty_e1], "List", [ty_e2]) => is_type_check_same(ty_e1, ty_e2, env),
             ("Vec", [ty_e1, len1], "Vec", [ty_e2, len2]) => {
@@ -898,12 +926,22 @@ fn is_type_check_same(ty1: &core::Expr, ty2: &core::Expr, env: &Env) -> bool {
             ("U", [n1], "U", [n2]) => is_expr_check_same(n1, n2, &B!("Nat"), env),
             ("U", _, "List" | "Vec" | "=" | "Either", _) => false,
             ("List" | "Vec" | "=" | "Either", _, "U", _) => false,
-            _ => todo!(),
+            _ => {
+                todo!(
+                    "is_type_check_same: unhandled case: {} and {}",
+                    dpp(ty1, env),
+                    dpp(ty2, env)
+                )
+            }
         },
         (S("U", _), I("Atom" | "Nat" | "Trivial" | "Absurd")) => false,
         (I("Atom" | "Nat" | "Trivial" | "Absurd"), S("U", _)) => false,
         _ => {
-            todo!()
+            todo!(
+                "is_type_check_same: unhandled case: {} and {}",
+                dpp(ty1, env),
+                dpp(ty2, env)
+            )
         }
     };
     tc_log_end!("=> {}", ret);

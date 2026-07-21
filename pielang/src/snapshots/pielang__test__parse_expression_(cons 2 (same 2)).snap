@@ -4,7 +4,7 @@ description: (cons 2 (same 2))
 expression: parser.parse(e)
 ---
 Ok(
-    App(
+    AppExpr(
         Span(
             0,
             17,
@@ -24,7 +24,7 @@ Ok(
                 ),
                 2,
             ),
-            App(
+            AppExpr(
                 Span(
                     8,
                     16,

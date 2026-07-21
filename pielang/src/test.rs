@@ -104,6 +104,7 @@ fn check_synthesize(expr: &str) -> anyhow::Result<String> {
         .map_err(|err| anyhow::anyhow!("{}", err))?;
 
     let env = tc::Env::new();
+    check_expression(&expr)?;
     let mut output = String::new();
     match tc::synthesize(&expr, &env) {
         Ok((ty, e_o)) => {
