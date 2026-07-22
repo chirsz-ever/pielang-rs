@@ -1,4 +1,7 @@
-use crate::{ast, core, utils};
+use crate::{
+    ast::{self, is_builtin_name},
+    core, utils,
+};
 use ast::to_builtin_name as bn;
 use core::{Argument, DBIPPrint as dpp, Expr::Nat};
 use std::{
@@ -255,6 +258,7 @@ fn substitute(expr: &core::Expr, var: &str, e: &core::Expr, env: &Env) -> core::
     todo!()
 }
 
+// FIXME: de bruijn
 /// 对常用的 Argument 模式的简写
 #[inline]
 fn substitute_arg(body: &core::Expr, arg: &Argument, e: &core::Expr, env: &Env) -> core::Expr {
@@ -327,7 +331,7 @@ pub fn synthesize_with_type(
             if rargs.is_empty() {
                 // FunI-1
                 let r_o = synthesize_with_type(r, ty_ret, &env_ext(env, &arg, ty_arg))?;
-                Lambda(Argument::Symbol(arg), Ref::new(r_o))
+                normalize_fun_eta(arg, r_o)
             } else {
                 // FunI-2
                 // FIXME: right span
@@ -336,7 +340,7 @@ pub fn synthesize_with_type(
                     ty_ret,
                     &env_ext(env, &arg, ty_arg),
                 )?;
-                Lambda(Argument::Symbol(arg), Ref::new(r_o))
+                normalize_fun_eta(arg, r_o)
             }
         }
         // ΣI
@@ -403,6 +407,33 @@ pub fn synthesize_with_type(
 
     tc_log_end!("=> {}", dpp(&ret, env));
     Ok(ret)
+}
+
+// FunSame-η
+// (λ (x) (f x)) -> f
+fn normalize_fun_eta(arg: Ref<str>, r: core::Expr) -> core::Expr {
+    use core::Expr::*;
+    if let App(f, arg_f) = &r
+        && let Identifier(_, 0) = &**arg_f
+        && ident_occur_in(0, &*f)
+    {
+        (**f).clone()
+    } else {
+        Lambda(Argument::Symbol(arg), r.into())
+    }
+}
+
+fn ident_occur_in(n: usize, e: &core::Expr) -> bool {
+    use core::Expr::*;
+    match e {
+        Identifier(_, m) => *m == n,
+        I(_) | Atom(_) | Nat(_) => false,
+        S(_, args) => args.iter().any(|arg| ident_occur_in(n, arg)),
+        App(f, arg) => ident_occur_in(n, f) || ident_occur_in(n, arg),
+        Lambda(_, body) => ident_occur_in(n + 1, body),
+        Pi(_, ty_a, ty_r) => ident_occur_in(n, ty_a) || ident_occur_in(n + 1, ty_r),
+        Sigma(_, ty_a, ty_d) => ident_occur_in(n, ty_a) || ident_occur_in(n + 1, ty_d),
+    }
 }
 
 fn is_literal_add1(e: &core::Expr) -> bool {
@@ -473,8 +504,8 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
             })
         }
         PiExpr(..) | SigmaExpr(..) | ArrowExpr(..) => resolve_type_rule(e, env)?,
-        AppExpr(_, args) => {
-            match args.as_slice() {
+        AppExpr(_, exprs) => {
+            match exprs.as_slice() {
                 // (U n): (U (add1 n))
                 [Ident(_, "U"), NatLit(_, n)] => (U!(Nat(*n + 1)), U!(Nat(*n))),
                 [Ident(_, "U"), n] => {
@@ -763,9 +794,33 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                 //         bapp!("ind-=", t_o, m_o.as_ref().clone(), b_o),
                 //     )
                 // }
-                _ => throw!(ErrorKind::CannotInferType {
-                    expr: format!("{}", e)
-                }),
+                // FunE-1, FunE-2
+                [f, args @ ..] => {
+                    // TODO: FunSame-β
+                    assert!(!args.is_empty());
+                    assert!(!matches!(f, Ident(_, id) if is_builtin_name(id)));
+                    let (ty_f, f_o, arg);
+                    if let [arg_0] = args {
+                        // FunE-1
+                        arg = arg_0;
+                        (ty_f, f_o) = synthesize(f, env)?;
+                    } else {
+                        // FunE-2
+                        no_else!( let [ args_n_1 @ .., arg_n ] = &args[..] );
+                        let mut sub_exprs = vec![f.clone()];
+                        sub_exprs.extend_from_slice(args_n_1);
+                        // (f a b c) -> ((f a b) c)
+                        let sub_app = AppExpr(e.span(), sub_exprs);
+                        arg = arg_n;
+                        (ty_f, f_o) = synthesize(&sub_app, env)?;
+                    }
+                    try_match! { let Pi(arg_f, ty_a, ty_r) = &ty_f; env };
+                    let arg_o = synthesize_with_type(arg, ty_a, env)?;
+                    let ty_r_o = substitute_arg(ty_r, arg_f, &arg_o, env);
+                    // TODO: FunSame-β
+                    (ty_r_o, app!(f_o, arg_o))
+                }
+                _ => unreachable!("synthesize: unexpected application: {}", e),
             }
         }
     };

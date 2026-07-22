@@ -55,6 +55,21 @@ pub enum Expr<'a> {
     SigmaExpr(Span, Vec<(Id<'a>, Type<'a>)>, Ref<Expr<'a>>),
 }
 
+impl Expr<'_> {
+    pub fn span(&self) -> Span {
+        match self {
+            Expr::NatLit(span, _) => *span,
+            Expr::AtomLit(span, _) => *span,
+            Expr::Ident(span, _) => *span,
+            Expr::AppExpr(span, _) => *span,
+            Expr::LambdaExpr(span, _, _) => *span,
+            Expr::PiExpr(span, _, _) => *span,
+            Expr::ArrowExpr(span, _) => *span,
+            Expr::SigmaExpr(span, _, _) => *span,
+        }
+    }
+}
+
 impl<'a> fmt::Display for Expr<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Expr::*;
@@ -195,7 +210,7 @@ pub fn to_statement<'a>(e: Expr<'a>) -> Result<GlobalStatemant<'a>, LocatedError
                 };
                 let Ident(span_id, id) = id else {
                     return Err(LocatedError {
-                        loc: Some(*get_span(&id)),
+                        loc: Some(id.span()),
                         erk: "claim: expect identifier".to_string(),
                     });
                 };
@@ -217,7 +232,7 @@ pub fn to_statement<'a>(e: Expr<'a>) -> Result<GlobalStatemant<'a>, LocatedError
                 };
                 let Ident(span_id, id) = id else {
                     return Err(LocatedError {
-                        loc: Some(*get_span(&id)),
+                        loc: Some(id.span()),
                         erk: "define: expect identifier".to_string(),
                     });
                 };
@@ -244,19 +259,6 @@ pub fn to_statement<'a>(e: Expr<'a>) -> Result<GlobalStatemant<'a>, LocatedError
         _ => Expression(e),
     };
     Ok(stat)
-}
-
-pub fn get_span<'a>(e: &'a Expr<'a>) -> &'a Span {
-    match e {
-        Expr::NatLit(span, _) => span,
-        Expr::AtomLit(span, _) => span,
-        Expr::Ident(span, _) => span,
-        Expr::AppExpr(span, _) => span,
-        Expr::LambdaExpr(span, _, _) => span,
-        Expr::PiExpr(span, _, _) => span,
-        Expr::ArrowExpr(span, _) => span,
-        Expr::SigmaExpr(span, _, _) => span,
-    }
 }
 
 pub fn is_builtin_name(name: &str) -> bool {
