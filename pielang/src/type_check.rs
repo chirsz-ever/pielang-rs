@@ -455,10 +455,15 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
         Ident(_, "U") => (U!(Nat(1)), U!(Nat(0))),
         // Hypothesis
         Ident(_, id) => 'x: {
-            // convert to de Bruijn index
-            for (i, (name, (ty, _))) in env.iter().enumerate() {
+            for (i, (name, (ty, def))) in env.iter().enumerate() {
                 if name.as_deref().is_some_and(|n| *n == **id) {
-                    break 'x (ty.clone(), Identifier((*id).into(), i));
+                    if let Some(d) = &*def.borrow() {
+                        // convert to definition, normal form
+                        break 'x (ty.clone(), d.clone());
+                    } else {
+                        // convert to de Bruijn index
+                        break 'x (ty.clone(), Identifier((*id).into(), i));
+                    }
                 }
             }
             unreachable!("Identifier {} not found in env", id)
