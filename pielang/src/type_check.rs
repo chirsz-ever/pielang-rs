@@ -235,7 +235,7 @@ impl std::ops::Drop for IndentGuard {
         // pop 本帧的槽；Some(entry) 说明 tc_log_end! 未被调用，打印兜底出口日志
         if let Some(entry) = TC_LOG_ENTRYS.with(|v| v.borrow_mut().pop().flatten()) {
             log::trace!(
-                "{}{}{}",
+                "{}{}{} --- error",
                 "│".repeat(crate::type_check::INDENT.get()),
                 "└",
                 entry
