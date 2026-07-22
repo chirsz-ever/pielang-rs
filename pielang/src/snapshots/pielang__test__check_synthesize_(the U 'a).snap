@@ -3,4 +3,4 @@ source: pielang/src/test.rs
 description: "(the U 'a)"
 expression: output
 ---
-error: Expected U but given Atom
+Error: Expected U but given Atom

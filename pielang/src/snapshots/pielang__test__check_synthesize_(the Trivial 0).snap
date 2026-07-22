@@ -3,4 +3,4 @@ source: pielang/src/test.rs
 description: (the Trivial 0)
 expression: output
 ---
-error: Expected Trivial but given Nat
+Error: Expected Trivial but given Nat

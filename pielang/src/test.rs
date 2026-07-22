@@ -1,4 +1,3 @@
-use crate::ast::GlobalStatemant::CheckSame;
 use crate::ast::check_syntax;
 use crate::core;
 use crate::utils::StackMap;
@@ -105,17 +104,8 @@ fn check_synthesize(expr: &str) -> anyhow::Result<String> {
 
     let env = tc::Env::new();
     check_expression(&expr)?;
-    let mut output = String::new();
-    match tc::synthesize(&expr, &env) {
-        Ok((ty, e_o)) => {
-            output += &format!("type: {}\n", dpp(&ty, &env));
-            output += &format!("expr: {}\n", dpp(&e_o, &env));
-        }
-        Err(err) => {
-            output += &format!("error: {}", err);
-        }
-    }
-    Ok(output)
+    let (ty_o, e_o) = tc::synthesize(&expr, &env)?;
+    Ok(format!("type: {}\nexpr: {}\n", dpp(&ty_o, &env), dpp(&e_o, &env)))
 }
 
 fn check_expression(expr: &ast::Expr) -> anyhow::Result<()> {
@@ -123,15 +113,7 @@ fn check_expression(expr: &ast::Expr) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn check_same(expr: &str) -> anyhow::Result<String> {
-    use crate::syntax::GlobalStatemantParser;
-    let parser = GlobalStatemantParser::new();
-    let expr = parser
-        .parse(expr)
-        .map_err(|err| anyhow::anyhow!("{}", err))?;
-    let CheckSame(_, ty, e1, e2) = expr else {
-        anyhow::bail!("Expected check-same statement");
-    };
+fn check_same(ty: ast::Expr, e1: ast::Expr, e2: ast::Expr) -> anyhow::Result<()> {
     check_expression(&e1)?;
     check_expression(&e2)?;
     check_expression(&ty)?;
@@ -139,16 +121,12 @@ fn check_same(expr: &str) -> anyhow::Result<String> {
     let (_, ty_o) = tc::resolve_type(&ty, &env)?;
     let e1_o = tc::synthesize_with_type(&e1, &ty_o, &env)?;
     let e2_o = tc::synthesize_with_type(&e2, &ty_o, &env)?;
-    let mut output = String::new();
-    match tc::expr_check_same(&e1_o, &e2_o, &ty_o, &env) {
-        Ok(_) => output += "OK",
-        Err(err) => output += &format!("error: {}", err),
-    }
-    Ok(output)
+    tc::expr_check_same(&e1_o, &e2_o, &ty_o, &env)?;
+    Ok(())
 }
 
 #[test]
-fn synthesize_tests() -> anyhow::Result<()> {
+fn synthesize_tests() {
     let exprs = [
         // Nat
         "(the U Nat)",
@@ -203,11 +181,35 @@ fn synthesize_tests() -> anyhow::Result<()> {
             insta::assert_snapshot!(format!("check_synthesize_{}", s), output);
         });
     }
-    Ok(())
+}
+
+fn check_statement(expr: &str) -> anyhow::Result<String> {
+    use crate::syntax::GlobalStatemantParser;
+    let parser = GlobalStatemantParser::new();
+    let expr = parser
+        .parse(expr)
+        .map_err(|err| anyhow::anyhow!("{}", err))?;
+    match expr {
+        ast::GlobalStatemant::Expression(e) => {
+            check_expression(&e)?;
+            let env = tc::Env::new();
+            let (ty_o, e_o) = tc::synthesize(&e, &env)?;
+            Ok(format!(
+                "type: {}\nexpr: {}\n",
+                dpp(&ty_o, &env),
+                dpp(&e_o, &env)
+            ))
+        }
+        ast::GlobalStatemant::CheckSame(_, ty, e1, e2) => {
+            check_same(ty, e1, e2)?;
+            Ok("OK".to_string())
+        }
+        _ => todo!("Other statements are not supported yet"),
+    }
 }
 
 #[test]
-fn tlt_tests() -> anyhow::Result<()> {
+fn tlt_tests() {
     let exprs = [
         "(the U (Pair Atom Atom))",
         "(the (Pair Atom Atom) (cons 'ratatouille 'baguette))",
@@ -231,20 +233,12 @@ fn tlt_tests() -> anyhow::Result<()> {
         "(check-same (→ Nat (Pair Nat Nat)) (λ (a) (cons a a)) (λ (d) (cons d d)))",
     ];
     for s in exprs {
-        let output;
         eprintln!("{} ... ", s);
-        if s.starts_with("(the") {
-            output = check_synthesize(s)?;
-        } else if s.starts_with("(check-same") {
-            output = check_same(s)?;
-        } else {
-            todo!();
-        }
         insta::with_settings!({
             description => s,
         }, {
+            let output = check_statement(s).unwrap_or_else(|e| format!("Error: {e}"));
             insta::assert_snapshot!(format!("tll_1_{}", s), output);
         });
     }
-    Ok(())
 }

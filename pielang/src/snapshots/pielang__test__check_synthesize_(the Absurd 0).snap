@@ -3,4 +3,4 @@ source: pielang/src/test.rs
 description: (the Absurd 0)
 expression: output
 ---
-error: Expected Absurd but given Nat
+Error: Expected Absurd but given Nat

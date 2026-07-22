@@ -3,4 +3,4 @@ source: pielang/src/test.rs
 description: "(the Nat 'a)"
 expression: output
 ---
-error: Expected Nat but given Atom
+Error: Expected Nat but given Atom

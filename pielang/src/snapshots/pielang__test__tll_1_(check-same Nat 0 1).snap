@@ -3,4 +3,4 @@ source: pielang/src/test.rs
 description: (check-same Nat 0 1)
 expression: output
 ---
-error: The expressions 0 and 1 are not the same Nat
+Error: The expressions 0 and 1 are not the same Nat

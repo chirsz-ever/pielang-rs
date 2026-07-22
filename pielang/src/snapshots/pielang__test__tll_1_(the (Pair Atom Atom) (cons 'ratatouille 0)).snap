@@ -3,4 +3,4 @@ source: pielang/src/test.rs
 description: "(the (Pair Atom Atom) (cons 'ratatouille 0))"
 expression: output
 ---
-error: Expected Atom but given Nat
+Error: Expected Atom but given Nat
