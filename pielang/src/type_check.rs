@@ -68,7 +68,7 @@ macro_rules! tc_log_end {
 }
 
 /// 变量名 -> (类型, 表达式)
-/// 
+///
 /// 必须是 Option, 因为在检查 lambda 表达式是 Pi 类型时，两边需要同步环境
 pub type Env = crate::utils::StackMap<Option<Ref<str>>, (core::Expr, RefCell<Option<core::Expr>>)>;
 
@@ -802,7 +802,7 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
                 [ty_a, rargs @ ..] => {
                     let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
                     // FIXME: right span
-                    let (l_r, ty_r_o) = resolve_type(&AppExpr(*sp, rargs.to_vec()), env)?;
+                    let (l_r, ty_r_o) = resolve_type(&ArrowExpr(*sp, rargs.to_vec()), env)?;
                     (std::cmp::max(l_a, l_r), pi!(ty_a_o, ty_r_o))
                 }
                 _ => unreachable!(),

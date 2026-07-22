@@ -105,7 +105,11 @@ fn check_synthesize(expr: &str) -> anyhow::Result<String> {
     let env = tc::Env::new();
     check_expression(&expr)?;
     let (ty_o, e_o) = tc::synthesize(&expr, &env)?;
-    Ok(format!("type: {}\nexpr: {}\n", dpp(&ty_o, &env), dpp(&e_o, &env)))
+    Ok(format!(
+        "type: {}\nexpr: {}\n",
+        dpp(&ty_o, &env),
+        dpp(&e_o, &env)
+    ))
 }
 
 fn check_expression(expr: &ast::Expr) -> anyhow::Result<()> {
@@ -231,6 +235,7 @@ fn tlt_tests() {
         "(check-same (→ Nat Nat) (λ (x) x) (λ (y) y))",
         "(check-same (→ Nat Nat) (λ (x) x) (λ (y) 0))",
         "(check-same (→ Nat (Pair Nat Nat)) (λ (a) (cons a a)) (λ (d) (cons d d)))",
+        "(check-same (→ Atom Nat Atom) (λ (x y) x) (λ (a b) a))",
     ];
     for s in exprs {
         eprintln!("{} ... ", s);
