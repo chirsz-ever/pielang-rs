@@ -305,7 +305,6 @@ pub fn synthesize_with_type(
 ) -> Result<core::Expr, Error> {
     tc_log!("check `{}` is a `{}`", e, dpp(ty, env));
 
-    use ast::Expr::AppExpr as A;
     use ast::Expr::*;
     use ast::Id;
     use core::Expr::*;
@@ -341,7 +340,7 @@ pub fn synthesize_with_type(
             }
         }
         // ΣI
-        (A(_, args), Sigma(arg, ty_a, ty_d)) if let Ident(_, "cons") = args[0] => {
+        (AppExpr(_, args), Sigma(arg, ty_a, ty_d)) if let Ident(_, "cons") = args[0] => {
             let [_, a, d] = &**args else { unreachable!() };
             let a_o = synthesize_with_type(a, ty_a, env)?;
             let d_o = synthesize_with_type(d, &substitute_arg(ty_d, arg, &a_o, env), env)?;
@@ -361,7 +360,7 @@ pub fn synthesize_with_type(
                 })
             }
         }
-        (A(_, args), S(ty_bf, ty_args)) => {
+        (AppExpr(_, args), S(ty_bf, ty_args)) => {
             match (args.as_slice(), &**ty_bf, &**ty_args) {
                 // ListI-3，TLT 中不存在，我自己加的，使 (the (List (-> Nat Nat)) (:: (lambda (x) x) nil)) 这样的
                 // 表达式能推导出类型。
