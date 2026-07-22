@@ -67,8 +67,9 @@ macro_rules! tc_log_end {
     }};
 }
 
-// TODO: 移除 Option
 /// 变量名 -> (类型, 表达式)
+/// 
+/// 必须是 Option, 因为在检查 lambda 表达式是 Pi 类型时，两边需要同步环境
 pub type Env = crate::utils::StackMap<Option<Ref<str>>, (core::Expr, RefCell<Option<core::Expr>>)>;
 
 type Error = LocatedError<ErrorKind>;
@@ -243,8 +244,6 @@ impl std::ops::Drop for IndentGuard {
     }
 }
 
-// TODO: 使用 De Bruijn 方法解决变量名、作用域的各种问题
-
 /// 执行 expr[var/e]，将 expr 中自由出现的 var 替换为 e，e 应当是没有自由变量的。
 fn substitute(expr: &core::Expr, var: &str, e: &core::Expr, env: &Env) -> core::Expr {
     tc_log!(
@@ -272,7 +271,7 @@ fn env_ext(env: &Env, name: &Ref<str>, ty: &core::Expr) -> Env {
 
 fn env_ext_arg(env: &Env, name: &Argument, ty: &core::Expr) -> Env {
     match name {
-        Argument::Dummy => env.clone(),
+        Argument::Dummy => env.insert(None, (ty.clone(), Default::default())),
         Argument::Symbol(n) => env_ext(env, n, ty),
     }
 }
@@ -323,20 +322,20 @@ pub fn synthesize_with_type(
             I(bn(ty))
         }
         // FunI-1, FunI-2
-        (LambdaExpr(sp, args, r), Pi(pi_arg, ty_arg, ty_ret)) => {
+        (LambdaExpr(sp, args, r), Pi(_pi_arg, ty_arg, ty_ret)) => {
             no_else! { let [Id(_, arg), rargs @ ..] = &args[..] }
             let arg = (*arg).into();
             if rargs.is_empty() {
                 // FunI-1
-                // FIXME: variable scope
                 let r_o = synthesize_with_type(r, ty_ret, &env_ext(env, &arg, ty_arg))?;
                 Lambda(Argument::Symbol(arg), Ref::new(r_o))
             } else {
                 // FunI-2
+                // FIXME: right span
                 let r_o = synthesize_with_type(
                     &LambdaExpr(*sp, rargs.to_vec(), r.clone()),
                     ty_ret,
-                    &env_ext_arg(env, pi_arg, ty_arg),
+                    &env_ext(env, &arg, ty_arg),
                 )?;
                 Lambda(Argument::Symbol(arg), Ref::new(r_o))
             }
@@ -455,10 +454,14 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
         }
         Ident(_, "U") => (U!(Nat(1)), U!(Nat(0))),
         // Hypothesis
-        // TODO: de bruijn
-        Ident(_, id) => {
-            let (ty, _idx) = env.get(&Some((*id).into())).unwrap();
-            (ty.clone(), Identifier((*id).into(), 0))
+        Ident(_, id) => 'x: {
+            // convert to de Bruijn index
+            for (i, (name, (ty, _))) in env.iter().enumerate() {
+                if name.as_deref().is_some_and(|n| *n == **id) {
+                    break 'x (ty.clone(), Identifier((*id).into(), i));
+                }
+            }
+            unreachable!("Identifier {} not found in env", id)
         }
         LambdaExpr(_, _args, _body) => {
             throw!(ErrorKind::CannotInferType {
@@ -793,6 +796,7 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
                 // FunF->2
                 [ty_a, rargs @ ..] => {
                     let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
+                    // FIXME: right span
                     let (l_r, ty_r_o) = resolve_type(&AppExpr(*sp, rargs.to_vec()), env)?;
                     (std::cmp::max(l_a, l_r), pi!(ty_a_o, ty_r_o))
                 }
@@ -901,11 +905,10 @@ fn is_type_check_same(ty1: &core::Expr, ty2: &core::Expr, env: &Env) -> bool {
     use core::Expr::*;
     // TODO: 比较前充分计算 ty1 和 ty2
     let ret = match (ty1, ty2) {
-        // TODO: de bruijn
-        (Identifier(id1, _idx1), Identifier(id2, _idx2)) => id1 == id2,
+        (Identifier(_id1, idx1), Identifier(_id2, idx2)) => idx1 == idx2,
         (I(ty1), I(ty2)) => ty1 == ty2,
+        // ΣSame-Σ
         (Sigma(a1, ty_a1, ty_r1), Sigma(_a2, ty_a2, ty_r2)) => {
-            // FIXME: variable scope
             is_type_check_same(ty_a1, ty_a2, env)
                 && is_type_check_same(ty_r1, ty_r2, &env_ext_arg(env, a1, ty_a1))
         }
@@ -979,8 +982,7 @@ fn is_expr_check_same(c1: &core::Expr, c2: &core::Expr, ct: &core::Expr, env: &E
     // TODO: 比较前充分计算 c1、c2、ct
     let ret = match (c1, c2) {
         // HypothesisSame
-        // TODO: de bruijn
-        (Identifier(id1, _idx1), Identifier(id2, _idx2)) => id1 == id2,
+        (Identifier(_, idx1), Identifier(_, idx2)) => idx1 == idx2,
         (S("U", l1), S("U", l2)) => is_expr_check_same(&l1[0], &l2[0], &B!("Nat"), env),
         // 比较自然数，考虑字面量和构造器表示
         // NatSame-zero, NatSame-literal

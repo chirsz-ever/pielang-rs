@@ -31,6 +31,7 @@ ARGS:
   - checking built-in names have correct number of arguments
   - checking no unbound variables
 - Type checking `pielang::ast::Expr` and elaboration into `pielang::core::Expr`
+  - `core::Expr` uses de Bruijn indices for variables
 
 ## TODO
 

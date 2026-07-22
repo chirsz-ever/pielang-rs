@@ -4,9 +4,6 @@ use thiserror::Error;
 /// 引用类型，当前仅为 `std::rc::Rc`，未来或可使用 GC。
 pub type Ref<T> = std::rc::Rc<T>;
 
-/// 存储 De Bruijn index 的类型
-pub type DBI = usize;
-
 /// 在源代码中起始和结束位置，前闭后开
 #[derive(Debug, Clone, Copy)]
 pub struct Span(pub usize, pub usize);
