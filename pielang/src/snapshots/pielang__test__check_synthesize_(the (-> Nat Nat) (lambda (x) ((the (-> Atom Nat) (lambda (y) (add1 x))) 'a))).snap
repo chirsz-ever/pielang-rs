@@ -1,0 +1,7 @@
+---
+source: pielang/src/test.rs
+description: "(the (-> Nat Nat) (lambda (x) ((the (-> Atom Nat) (lambda (y) (add1 x))) 'a)))"
+expression: output
+---
+type: (→ Nat Nat)
+expr: (λ (x) (add1 x))

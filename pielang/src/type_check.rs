@@ -147,7 +147,7 @@ macro_rules! no_else {
     };
 }
 
-macro_rules! pi {
+macro_rules! arrow {
     ($ty_a:expr, $ty_r:expr $(,)?) => {
         core::Expr::Pi(Argument::Dummy, Ref::new($ty_a), Ref::new($ty_r))
     };
@@ -164,13 +164,13 @@ macro_rules! pi {
         core::Expr::Pi(
             Argument::Dummy,
             Ref::new($ty_a),
-            Ref::new(pi!($($e)+)))
+            Ref::new(arrow!($($e)+)))
     };
     (ref $ty_a:expr, $($e:tt)+) => {
         core::Expr::Pi(
             Argument::Dummy,
             Ref::clone(&$ty_a),
-            Ref::new(pi!($($e)+)))
+            Ref::new(arrow!($($e)+)))
     };
 }
 
@@ -247,25 +247,67 @@ impl std::ops::Drop for IndentGuard {
     }
 }
 
-/// 执行 expr[var/e]，将 expr 中自由出现的 var 替换为 e，e 应当是没有自由变量的。
-fn substitute(expr: &core::Expr, var: &str, e: &core::Expr, env: &Env) -> core::Expr {
-    tc_log!(
-        "substitute `{}` to `{}` in `{}`",
-        var,
-        dpp(e, env),
-        dpp(expr, env)
-    );
-    todo!()
+/// 执行 beta 变换 expr[e/var]，将 expr 中自由出现的 var 替换为 e，base 表示当前作用域深度。
+fn substitute(expr: &core::Expr, var: usize, e: &core::Expr) -> core::Expr {
+    use core::Expr::*;
+
+    let ret = match expr {
+        Nat(_) | Atom(_) | I(_) => expr.clone(),
+        Identifier(i, idx) => {
+            if *idx == var {
+                e.clone()
+            } else if *idx > var {
+                Identifier(i.clone(), idx - 1)
+            } else {
+                expr.clone()
+            }
+        }
+        S(bid, args) => {
+            let args_o = args.iter().map(|arg| substitute(arg, var, e)).collect();
+            S(bid, args_o)
+        }
+        Pi(a, ty_a, ty_r) => {
+            let ty_a_o = substitute(ty_a, var, e);
+            let ty_r_o = substitute(ty_r, var + 1, e);
+            Pi(a.clone(), Ref::new(ty_a_o), Ref::new(ty_r_o))
+        }
+        Sigma(a, ty_a, ty_d) => {
+            let ty_a_o = substitute(ty_a, var, e);
+            let ty_d_o = substitute(ty_d, var + 1, e);
+            Sigma(a.clone(), Ref::new(ty_a_o), Ref::new(ty_d_o))
+        }
+        Lambda(a, body) => {
+            let body_o = substitute(body, var + 1, e);
+            Lambda(a.clone(), Ref::new(body_o))
+        }
+        App(f, a) => {
+            let f_o = substitute(f, var, e);
+            let a_o = substitute(a, var, e);
+            App(Ref::new(f_o), Ref::new(a_o))
+        }
+    };
+
+    ret
 }
 
-// FIXME: de bruijn
-/// 对常用的 Argument 模式的简写
+/// 对常用的 Argument 下 beta 变换简写
 #[inline]
-fn substitute_arg(body: &core::Expr, arg: &Argument, e: &core::Expr, env: &Env) -> core::Expr {
-    match arg {
-        Argument::Symbol(sym) => substitute(body, sym, e, env),
+fn substitute_beta_arg(body: &core::Expr, arg: &Argument, e: &core::Expr, env: &Env) -> core::Expr {
+    tc_log!(
+        "substitute_beta_arg: substitute {} with {} in {}",
+        arg,
+        dpp(e, env),
+        dpp(body, env)
+    );
+
+    let ret = match arg {
+        Argument::Symbol(_) => substitute(body, 0, e),
         Argument::Dummy => body.clone(),
-    }
+    };
+
+    tc_log_end!("=> {}", dpp(&ret, env));
+
+    ret
 }
 
 #[inline]
@@ -302,6 +344,7 @@ fn switch_rule(e: &ast::Expr, ty: &core::Expr, env: &Env) -> Result<core::Expr, 
 /// 第六种 Judgement，见 Figure B.1。
 /// 对于构造式，有唯一相关的类型与之匹配；
 /// 其它表达式则应用 Which 规则：试图综合得出其类型，再将结果与所给类型比较。
+/// 返回正规化后的表达式。
 pub fn synthesize_with_type(
     e: &ast::Expr,
     ty: &core::Expr,
@@ -347,7 +390,7 @@ pub fn synthesize_with_type(
         (AppExpr(_, args), Sigma(arg, ty_a, ty_d)) if let Ident(_, "cons") = args[0] => {
             let [_, a, d] = &**args else { unreachable!() };
             let a_o = synthesize_with_type(a, ty_a, env)?;
-            let d_o = synthesize_with_type(d, &substitute_arg(ty_d, arg, &a_o, env), env)?;
+            let d_o = synthesize_with_type(d, &substitute_beta_arg(ty_d, arg, &a_o, env), env)?;
             S("cons", vec![a_o, d_o])
         }
         // ListI-1
@@ -463,6 +506,7 @@ fn literal_sub1(e: &core::Expr) -> core::Expr {
 
 /// 对表达式 `e` 进行类型检查，返回检查结果。
 /// 第七种 Judgement，见 Figure B.1。
+/// 返回正规化后的表达式。
 pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), Error> {
     tc_log!("synthesize `{}`", e);
 
@@ -579,11 +623,11 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                 // SigmaE-2
                 [Ident(_, "cdr"), pr] => {
                     let (ty_pr, pr_o) = synthesize(pr, env)?;
-                    try_match! { let Sigma(_x, ty_a, ty_d) = &ty_pr; env };
+                    try_match! { let Sigma(x, ty_a, ty_d) = &ty_pr; env };
                     // FIXME: 在此需要编译期计算
                     let car_pr = bapp!("car", pr_o.clone());
                     // FIXME!
-                    let _ty_d_o = substitute(ty_d, "", &car_pr, env);
+                    let _ty_d_o = substitute_beta_arg(ty_d, x, &car_pr, env);
                     ((**ty_a).clone(), S("cdr", vec![pr_o]))
                 }
                 // NatE-1
@@ -599,7 +643,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     let t_o = synthesize_with_type(t, &B!("Nat"), env)?;
                     let (ty_b, b_o) = synthesize(b, env)?;
                     let ty_b = Ref::new(ty_b);
-                    let ty_s = pi!(ref ty_b, ref ty_b);
+                    let ty_s = arrow!(ref ty_b, ref ty_b);
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     // FIXME: TLT 中需要多一层 the 表达式
                     (ty_b.as_ref().clone(), S("iter-Nat", vec![t_o, b_o, s_o]))
@@ -609,7 +653,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     let t_o = synthesize_with_type(t, &B!("Nat"), env)?;
                     let (ty_b, b_o) = synthesize(b, env)?;
                     let ty_b = Ref::new(ty_b);
-                    let ty_s = pi!(B!("Nat"), ref ty_b, ref ty_b);
+                    let ty_s = arrow!(I("Nat"), ref ty_b, ref ty_b);
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     // FIXME: TLT 中需要多一层 the 表达式
                     (ty_b.as_ref().clone(), S("rec-Nat", vec![t_o, b_o, s_o]))
@@ -642,7 +686,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     try_match! { let S("List", [ty_e]) = &ty_t; env }
                     let (ty_b, b_o) = synthesize(b, env)?;
                     let ty_b = Ref::new(ty_b);
-                    let ty_s = pi!(ty_e.clone(), ty_t, ref ty_b, ref ty_b,);
+                    let ty_s = arrow!(ty_e.clone(), ty_t, ref ty_b, ref ty_b,);
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     // FIXME: TLT 中需要多一层 the 表达式
                     (ty_b.as_ref().clone(), S("rec-List", vec![t_o, b_o, s_o]))
@@ -729,7 +773,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                 [Ident(_, "replace"), t, _m, b] => {
                     let (ty_t, t_o) = synthesize(t, env)?;
                     try_match! { let S("=", [ty_x, from, to]) = &ty_t; env }
-                    let m_o = pi!(ty_x.clone(), U!());
+                    let m_o = arrow!(ty_x.clone(), U!());
                     let m_o = Ref::new(m_o);
                     let b_o = synthesize_with_type(b, &app!(ref m_o, from.clone()), env)?;
                     (
@@ -796,7 +840,6 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                 // }
                 // FunE-1, FunE-2
                 [f, args @ ..] => {
-                    // TODO: FunSame-β
                     assert!(!args.is_empty());
                     assert!(!matches!(f, Ident(_, id) if is_builtin_name(id)));
                     let (ty_f, f_o, arg);
@@ -816,9 +859,9 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     }
                     try_match! { let Pi(arg_f, ty_a, ty_r) = &ty_f; env };
                     let arg_o = synthesize_with_type(arg, ty_a, env)?;
-                    let ty_r_o = substitute_arg(ty_r, arg_f, &arg_o, env);
-                    // TODO: FunSame-β
-                    (ty_r_o, app!(f_o, arg_o))
+                    let ty_r_o = substitute_beta_arg(ty_r, arg_f, &arg_o, env);
+                    // TODO: 能保证一次转化为正规形式吗？
+                    (ty_r_o, normalize_fun_beta(f_o, arg_o))
                 }
                 _ => unreachable!("synthesize: unexpected application: {}", e),
             }
@@ -827,6 +870,20 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
 
     tc_log_end!("=> (the {} {})", dpp(&ret.0, env), dpp(&ret.1, env));
     Ok(ret)
+}
+
+// FunSame-β
+fn normalize_fun_beta(f: core::Expr, arg: core::Expr) -> core::Expr {
+    use core::Expr::*;
+    if let Lambda(arg_f, body) = f {
+        let env = Env::new().insert(
+            None,
+            (core::Expr::I("ignore"), RefCell::new(arg.clone().into())),
+        );
+        substitute_beta_arg(&body, &arg_f, &arg, &env)
+    } else {
+        App(f.into(), arg.into())
+    }
 }
 
 /// 判断并计算表达式是一个类型或 U(n)，返回其类型层级，相当于为 U(n) 特化的 synthesize。
@@ -850,14 +907,14 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
                 [ty_a, ty_r] => {
                     let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
                     let (l_r, ty_r_o) = resolve_type(ty_r, env)?;
-                    (std::cmp::max(l_a, l_r), pi!(ty_a_o, ty_r_o))
+                    (std::cmp::max(l_a, l_r), arrow!(ty_a_o, ty_r_o))
                 }
                 // FunF->2
                 [ty_a, rargs @ ..] => {
                     let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
                     // FIXME: right span
                     let (l_r, ty_r_o) = resolve_type(&ArrowExpr(*sp, rargs.to_vec()), env)?;
-                    (std::cmp::max(l_a, l_r), pi!(ty_a_o, ty_r_o))
+                    (std::cmp::max(l_a, l_r), arrow!(ty_a_o, ty_r_o))
                 }
                 _ => unreachable!(),
             }
@@ -1064,7 +1121,7 @@ fn is_expr_check_same(c1: &core::Expr, c2: &core::Expr, ct: &core::Expr, env: &E
         (S("cons", args1), S("cons", args2)) => {
             no_else! { let ([a1, d1], [a2, d2], Sigma(arg, ty_a, ty_d)) = (&**args1, &**args2, ct) }
             is_expr_check_same(a1, a2, ty_a, env)
-                && is_expr_check_same(d1, d2, &substitute_arg(ty_d, arg, a1, env), env)
+                && is_expr_check_same(d1, d2, &substitute_beta_arg(ty_d, arg, a1, env), env)
         }
         // FunSame-λ
         (Lambda(_, r1), Lambda(_, r2)) => {

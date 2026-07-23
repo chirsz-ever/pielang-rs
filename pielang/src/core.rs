@@ -145,28 +145,26 @@ where
         use Expr::*;
         let DBIPPrint(expr, env) = self;
 
-        fn fetch_fresh_name<V>(arg: Option<Ref<str>>, env: &Env<V>) -> Ref<str> {
-            if let Some(sym) = arg {
-                sym
-            } else {
-                let mut x = "x".to_owned();
-                let mut n = 0;
-                while env
-                    .iter()
-                    .any(|(y, _)| y.as_ref().is_some_and(|y| **y == *x))
-                {
-                    x = format!("x{}", n);
-                    n += 1;
+        fn has_name_conflict<V>(env: &Env<V>, id: &str, idx: usize) -> bool {
+            for (i, (k, _)) in env.iter().enumerate() {
+                let same_name = k.as_ref().is_some_and(|k| &**k == id);
+                let same_idx = i == idx;
+                if same_name && same_idx {
+                    return false;
+                } else if same_name && !same_idx {
+                    return true;
+                } else if !same_name && same_idx {
+                    return true;
                 }
-                x.into()
             }
+            false
         }
 
-        fn ext_env<V>(env: &Env<V>, name: &str) -> Env<V>
+        fn ext_env_arg<V>(env: &Env<V>, arg: &Argument) -> Env<V>
         where
             V: Default,
         {
-            env.insert(Some(name.into()), <V as Default>::default())
+            env.insert(arg.into(), <V as Default>::default())
         }
 
         match expr {
@@ -176,26 +174,23 @@ where
             Nat(n) => {
                 write!(f, "{}", n)
             }
-            // TODO: use id to pretty print
-            Identifier(_id, n) => write!(
-                f,
-                "{}",
-                fetch_fresh_name(
-                    env.iter().nth(*n).and_then(|(k, _)| k.as_ref()).cloned(),
-                    env
-                )
-            ),
+            Identifier(id, n) => {
+                if has_name_conflict(env, id, *n) {
+                    // TODO: more pretty print
+                    write!(f, "{}:{}", id, n)
+                } else {
+                    write!(f, "{}", id)
+                }
+            }
             Lambda(arg, body) => {
-                let arg_name = fetch_fresh_name(arg.into(), env);
-                let mut current_env = ext_env(env, &arg_name);
-                write!(f, "(λ ({}", arg_name)?;
+                let mut current_env = ext_env_arg(env, arg);
+                write!(f, "(λ ({}", arg)?;
                 let mut current: &Expr = body;
                 loop {
                     match current {
                         Lambda(next_arg, next_body) => {
-                            let next_arg_name = fetch_fresh_name(next_arg.into(), &current_env);
-                            write!(f, " {}", next_arg_name)?;
-                            current_env = ext_env(&current_env, &next_arg_name);
+                            write!(f, " {}", next_arg)?;
+                            current_env = ext_env_arg(&current_env, next_arg);
                             current = &**next_body;
                         }
                         _ => {
@@ -207,47 +202,48 @@ where
                 Ok(())
             }
             Pi(arg, ty, body) => {
-                let arg_name = fetch_fresh_name(arg.into(), env);
-                let new_env = ext_env(env, &arg_name);
-                if matches!(arg, Argument::Dummy) {
-                    let ty = DBIPPrint(ty, &new_env);
-                    write!(f, "(→ {}", ty)?;
-                    let mut current: &Expr = body;
-                    loop {
-                        match current {
-                            Pi(next_arg, next_ty, next_body)
-                                if matches!(next_arg, Argument::Dummy) =>
-                            {
-                                let next_arg_name = fetch_fresh_name(next_arg.into(), &new_env);
-                                let next_env = ext_env(&new_env, &next_arg_name);
-                                let next_ty = DBIPPrint(next_ty, &next_env);
-                                write!(f, " {}", next_ty)?;
-                                current = &**next_body;
-                            }
-                            _ => {
-                                write!(f, " {})", DBIPPrint(current, &new_env))?;
-                                break;
+                let new_env = ext_env_arg(env, arg);
+                match arg {
+                    Argument::Dummy => {
+                        let ty = DBIPPrint(ty, &new_env);
+                        write!(f, "(→ {}", ty)?;
+                        let mut current: &Expr = body;
+                        loop {
+                            match current {
+                                Pi(Argument::Dummy, next_ty, next_body) => {
+                                    let next_env = env.insert(None, Default::default());
+                                    let next_ty = DBIPPrint(next_ty, &next_env);
+                                    write!(f, " {}", next_ty)?;
+                                    current = &**next_body;
+                                }
+                                _ => {
+                                    write!(f, " {})", DBIPPrint(current, &new_env))?;
+                                    break;
+                                }
                             }
                         }
                     }
-                    Ok(())
-                } else {
-                    let ty = DBIPPrint(ty, &new_env);
-                    let body = DBIPPrint(body, &new_env);
-                    write!(f, "(Π (({} {})) {})", arg_name, ty, body)
+                    Argument::Symbol(arg) => {
+                        let ty = DBIPPrint(ty, &new_env);
+                        let body = DBIPPrint(body, &new_env);
+                        write!(f, "(Π (({} {})) {})", arg, ty, body)?;
+                    }
                 }
+                Ok(())
             }
             Sigma(arg, ty, body) => {
-                let arg_name = fetch_fresh_name(arg.into(), env);
-                let new_env = ext_env(env, &arg_name);
-                if matches!(arg, Argument::Dummy) {
-                    let ty = DBIPPrint(ty, &new_env);
-                    let body = DBIPPrint(body, &new_env);
-                    write!(f, "(Pair {} {})", ty, body)
-                } else {
-                    let ty = DBIPPrint(ty, &new_env);
-                    let body = DBIPPrint(body, &new_env);
-                    write!(f, "(Σ (({} {})) {})", arg_name, ty, body)
+                let new_env = ext_env_arg(env, arg);
+                match arg {
+                    Argument::Dummy => {
+                        let ty = DBIPPrint(ty, &new_env);
+                        let body = DBIPPrint(body, &new_env);
+                        write!(f, "(Pair {} {})", ty, body)
+                    }
+                    Argument::Symbol(arg) => {
+                        let ty = DBIPPrint(ty, &new_env);
+                        let body = DBIPPrint(body, &new_env);
+                        write!(f, "(Σ (({} {})) {})", arg, ty, body)
+                    }
                 }
             }
             App(fun, arg) => {
@@ -320,7 +316,7 @@ impl fmt::Display for ErrorKind {
 
 pub type Error = LocatedError<ErrorKind>;
 
-/// 标识符，`Dummy` 用于将普通函数类型转换为 Pi 类型时，
+/// 标识符，`Dummy` 用于表示参数不在之后出现，例如从 `→` `Pair` 转换为 `Π` `Σ` 时。
 /// 未来或可用于 `_` 语法
 #[derive(Debug, Clone)]
 pub enum Argument {
