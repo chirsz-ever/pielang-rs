@@ -1,0 +1,7 @@
+---
+source: pielang/src/test.rs
+description: (the (-> (-> (-> Nat Nat) Nat Nat) Nat Nat) (lambda (f x) (f (lambda (y) y) x)))
+expression: output
+---
+type: (→ (→ (→ Nat Nat) Nat Nat) Nat Nat)
+expr: (λ (f x) (f (λ (y) y) x))

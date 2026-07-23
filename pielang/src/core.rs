@@ -55,7 +55,21 @@ impl fmt::Display for Expr {
                 write!(f, "{}", id)
             }
             Lambda(arg, body) => {
-                write!(f, "(λ ({}) {})", arg, body)
+                write!(f, "(λ ({}", arg)?;
+                let mut current: &Self = body;
+                loop {
+                    match current {
+                        Lambda(next_arg, next_body) => {
+                            write!(f, " {}", next_arg)?;
+                            current = &**next_body;
+                        }
+                        _ => {
+                            write!(f, ") {})", current)?;
+                            break;
+                        }
+                    }
+                }
+                Ok(())
             }
             Pi(arg, ty, body) => {
                 if matches!(arg, Argument::Dummy) {
@@ -86,7 +100,18 @@ impl fmt::Display for Expr {
                 }
             }
             App(fun, arg) => {
-                write!(f, "({} {})", fun, arg)
+                write!(f, "(")?;
+                let mut args = vec![&**arg];
+                let mut current: &Self = fun;
+                while let App(inner_fun, inner_arg) = current {
+                    args.push(&**inner_arg);
+                    current = &**inner_fun;
+                }
+                write!(f, "{}", current)?;
+                for a in args.iter().rev() {
+                    write!(f, " {}", a)?;
+                }
+                write!(f, ")")
             }
             I(id) => {
                 write!(f, "{}", id)
@@ -162,12 +187,24 @@ where
             ),
             Lambda(arg, body) => {
                 let arg_name = fetch_fresh_name(arg.into(), env);
-                write!(
-                    f,
-                    "(λ ({}) {})",
-                    arg_name,
-                    DBIPPrint(body, &ext_env(env, &arg_name))
-                )
+                let mut current_env = ext_env(env, &arg_name);
+                write!(f, "(λ ({}", arg_name)?;
+                let mut current: &Expr = body;
+                loop {
+                    match current {
+                        Lambda(next_arg, next_body) => {
+                            let next_arg_name = fetch_fresh_name(next_arg.into(), &current_env);
+                            write!(f, " {}", next_arg_name)?;
+                            current_env = ext_env(&current_env, &next_arg_name);
+                            current = &**next_body;
+                        }
+                        _ => {
+                            write!(f, ") {})", DBIPPrint(current, &current_env))?;
+                            break;
+                        }
+                    }
+                }
+                Ok(())
             }
             Pi(arg, ty, body) => {
                 let arg_name = fetch_fresh_name(arg.into(), env);
@@ -214,9 +251,18 @@ where
                 }
             }
             App(fun, arg) => {
-                let fun = DBIPPrint(fun, env);
-                let arg = DBIPPrint(arg, env);
-                write!(f, "({} {})", fun, arg)
+                write!(f, "(")?;
+                let mut args: Vec<&Expr> = vec![&**arg];
+                let mut current: &Expr = fun;
+                while let App(inner_fun, inner_arg) = current {
+                    args.push(&**inner_arg);
+                    current = &**inner_fun;
+                }
+                write!(f, "{}", DBIPPrint(current, env))?;
+                for a in args.iter().rev() {
+                    write!(f, " {}", DBIPPrint(a, env))?;
+                }
+                write!(f, ")")
             }
             I(id) => {
                 write!(f, "{}", id)
