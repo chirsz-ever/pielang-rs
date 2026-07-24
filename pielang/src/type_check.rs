@@ -632,9 +632,10 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                 }
                 // NatE-1
                 [Ident(_, "which-Nat"), t, b, s] => {
-                    let t_o = synthesize_with_type(t, &B!("Nat"), env)?;
+                    let t_o = synthesize_with_type(t, &I("Nat"), env)?;
                     let (ty_b, b_o) = synthesize(b, env)?;
-                    let s_o = synthesize_with_type(s, &ty_b, env)?;
+                    let ty_s = arrow!(I("Nat"), ty_b.clone());
+                    let s_o = synthesize_with_type(s, &ty_s, env)?;
                     // FIXME: TLT 中需要多一层 the 表达式
                     (ty_b, S("which-Nat", vec![t_o, b_o, s_o]))
                 }
