@@ -333,6 +333,21 @@ impl From<Argument> for Option<Ref<str>> {
     }
 }
 
+impl From<Option<Ref<str>>> for Argument {
+    fn from(arg: Option<Ref<str>>) -> Self {
+        match arg {
+            None => Argument::Dummy,
+            Some(sym) => Argument::Symbol(sym),
+        }
+    }
+}
+
+impl From<Ref<str>> for Argument {
+    fn from(arg: Ref<str>) -> Self {
+        Argument::Symbol(arg)
+    }
+}
+
 impl From<&Argument> for Option<Ref<str>> {
     fn from(arg: &Argument) -> Self {
         match arg {

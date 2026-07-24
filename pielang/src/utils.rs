@@ -45,6 +45,23 @@ impl<K, V> StackMap<K, V> {
         None
     }
 
+    pub fn get_index<Q>(&self, idx: usize) -> Option<(&K, &V)>
+    where
+        K: std::borrow::Borrow<Q>,
+        Q: ?Sized + Eq,
+    {
+        let mut next = &self.0;
+        let mut i = 0;
+        while let Some(node) = next {
+            if i == idx {
+                return Some((&node.kv.0, &node.kv.1));
+            }
+            next = &node.next;
+            i += 1;
+        }
+        None
+    }
+
     pub fn insert(&self, k: K, v: V) -> StackMap<K, V> {
         StackMap(Some(Ref::new(StackMapNode {
             kv: (k, v),

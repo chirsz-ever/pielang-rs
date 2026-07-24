@@ -1,0 +1,7 @@
+---
+source: pielang/src/test.rs
+description: "(the (Pair Nat Atom) (cons 0 'a))"
+expression: output
+---
+type: (Pair Nat Atom)
+expr: (cons 0 'a)

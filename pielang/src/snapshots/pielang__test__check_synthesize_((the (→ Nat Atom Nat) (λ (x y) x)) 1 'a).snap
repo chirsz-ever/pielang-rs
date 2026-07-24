@@ -1,0 +1,7 @@
+---
+source: pielang/src/test.rs
+description: "((the (→ Nat Atom Nat) (λ (x y) x)) 1 'a)"
+expression: output
+---
+type: Nat
+expr: 1

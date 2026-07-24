@@ -247,15 +247,53 @@ impl std::ops::Drop for IndentGuard {
     }
 }
 
-/// 执行 beta 变换 expr[e/var]，将 expr 中自由出现的 var 替换为 e，base 表示当前作用域深度。
-fn substitute(expr: &core::Expr, var: usize, e: &core::Expr) -> core::Expr {
+/// 所有自由变量的 dbi 值加上一个数, depth 表示当前作用域深度
+fn shift_dbi(e: &core::Expr, inc: usize, depth: usize) -> core::Expr {
+    use core::Expr::*;
+    if inc == 0 {
+        return e.clone();
+    }
+    match e {
+        Identifier(name, idx) => {
+            if *idx >= depth {
+                Identifier(name.clone(), idx + inc)
+            } else {
+                e.clone()
+            }
+        }
+        I(_) | Atom(_) | Nat(_) => e.clone(),
+        S(bf, args) => S(
+            bf,
+            args.iter().map(|arg| shift_dbi(arg, inc, depth)).collect(),
+        ),
+        App(f, arg) => App(
+            Ref::new(shift_dbi(f, inc, depth)),
+            Ref::new(shift_dbi(arg, inc, depth)),
+        ),
+        Lambda(arg, body) => Lambda(arg.clone(), Ref::new(shift_dbi(body, inc, depth + 1))),
+        Pi(arg, ty_a, ty_r) => Pi(
+            arg.clone(),
+            Ref::new(shift_dbi(ty_a, inc, depth)),
+            Ref::new(shift_dbi(ty_r, inc, depth + 1)),
+        ),
+        Sigma(arg, ty_a, ty_d) => Sigma(
+            arg.clone(),
+            Ref::new(shift_dbi(ty_a, inc, depth)),
+            Ref::new(shift_dbi(ty_d, inc, depth + 1)),
+        ),
+    }
+}
+
+/// 执行 beta 变换 expr[e/var]，将 expr 中自由出现的 var 替换为 e，depth 表示当前作用域深度。
+/// TODO: 也许可以统一 var 和 depth 参数?
+fn substitute(expr: &core::Expr, var: usize, e: &core::Expr, depth: usize) -> core::Expr {
     use core::Expr::*;
 
     let ret = match expr {
         Nat(_) | Atom(_) | I(_) => expr.clone(),
         Identifier(i, idx) => {
             if *idx == var {
-                e.clone()
+                shift_dbi(e, depth, 0)
             } else if *idx > var {
                 Identifier(i.clone(), idx - 1)
             } else {
@@ -263,27 +301,30 @@ fn substitute(expr: &core::Expr, var: usize, e: &core::Expr) -> core::Expr {
             }
         }
         S(bid, args) => {
-            let args_o = args.iter().map(|arg| substitute(arg, var, e)).collect();
+            let args_o = args
+                .iter()
+                .map(|arg| substitute(arg, var, e, depth))
+                .collect();
             S(bid, args_o)
         }
+        App(f, a) => {
+            let f_o = substitute(f, var, e, depth);
+            let a_o = substitute(a, var, e, depth);
+            App(Ref::new(f_o), Ref::new(a_o))
+        }
         Pi(a, ty_a, ty_r) => {
-            let ty_a_o = substitute(ty_a, var, e);
-            let ty_r_o = substitute(ty_r, var + 1, e);
+            let ty_a_o = substitute(ty_a, var, e, depth);
+            let ty_r_o = substitute(ty_r, var + 1, e, depth + 1);
             Pi(a.clone(), Ref::new(ty_a_o), Ref::new(ty_r_o))
         }
         Sigma(a, ty_a, ty_d) => {
-            let ty_a_o = substitute(ty_a, var, e);
-            let ty_d_o = substitute(ty_d, var + 1, e);
+            let ty_a_o = substitute(ty_a, var, e, depth);
+            let ty_d_o = substitute(ty_d, var + 1, e, depth + 1);
             Sigma(a.clone(), Ref::new(ty_a_o), Ref::new(ty_d_o))
         }
         Lambda(a, body) => {
-            let body_o = substitute(body, var + 1, e);
+            let body_o = substitute(body, var + 1, e, depth + 1);
             Lambda(a.clone(), Ref::new(body_o))
-        }
-        App(f, a) => {
-            let f_o = substitute(f, var, e);
-            let a_o = substitute(a, var, e);
-            App(Ref::new(f_o), Ref::new(a_o))
         }
     };
 
@@ -301,7 +342,7 @@ fn substitute_beta_arg(body: &core::Expr, arg: &Argument, e: &core::Expr, env: &
     );
 
     let ret = match arg {
-        Argument::Symbol(_) => substitute(body, 0, e),
+        Argument::Symbol(_) => substitute(body, 0, e, 0),
         Argument::Dummy => body.clone(),
     };
 
@@ -322,11 +363,9 @@ fn env_ext_arg(env: &Env, name: &Argument, ty: &core::Expr) -> Env {
     }
 }
 
-// TODO: debruijn
-// fn env_get_nth_type(env: &Env, n: usize) -> &core::Expr {
-//     // 经过作用域检查，保证不会 panic
-//     &env.iter().nth(n).unwrap().1.0
-// }
+fn env_ext_arg_notype(env: &Env, name: &Argument) -> Env {
+    env_ext_arg(env, name, &Default::default())
+}
 
 /// 先综合出 e 的类型，再检查其是否与 ty 相同
 #[inline]
@@ -374,7 +413,7 @@ pub fn synthesize_with_type(
             if rargs.is_empty() {
                 // FunI-1
                 let r_o = synthesize_with_type(r, ty_ret, &env_ext(env, &arg, ty_arg))?;
-                normalize_fun_eta(arg, r_o)
+                Lambda(arg.into(), r_o.into())
             } else {
                 // FunI-2
                 // FIXME: right span
@@ -383,7 +422,7 @@ pub fn synthesize_with_type(
                     ty_ret,
                     &env_ext(env, &arg, ty_arg),
                 )?;
-                normalize_fun_eta(arg, r_o)
+                Lambda(arg.into(), r_o.into())
             }
         }
         // ΣI
@@ -454,12 +493,13 @@ pub fn synthesize_with_type(
 
 // FunSame-η
 // (λ (x) (f x)) -> f
-fn normalize_fun_eta(arg: Ref<str>, r: core::Expr) -> core::Expr {
+fn normalize_fun_eta(arg: Ref<str>, r: core::Expr, changed: &mut bool) -> core::Expr {
     use core::Expr::*;
     if let App(f, arg_f) = &r
         && let Identifier(_, 0) = &**arg_f
         && ident_occur_in(0, &*f)
     {
+        *changed = true;
         (**f).clone()
     } else {
         Lambda(Argument::Symbol(arg), r.into())
@@ -529,15 +569,11 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
         Ident(_, "U") => (U!(Nat(1)), U!(Nat(0))),
         // Hypothesis
         Ident(_, id) => 'x: {
-            for (i, (name, (ty, def))) in env.iter().enumerate() {
+            for (i, (name, (ty, _))) in env.iter().enumerate() {
                 if name.as_deref().is_some_and(|n| *n == **id) {
-                    if let Some(d) = &*def.borrow() {
-                        // convert to definition, normal form
-                        break 'x (ty.clone(), d.clone());
-                    } else {
-                        // convert to de Bruijn index
-                        break 'x (ty.clone(), Identifier((*id).into(), i));
-                    }
+                    // convert to de Bruijn index
+                    // 在最后的 normalize 中会将 def 替换为其定义
+                    break 'x (ty.clone(), Identifier((*id).into(), i));
                 }
             }
             unreachable!("Identifier {} not found in env", id)
@@ -623,12 +659,10 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                 // SigmaE-2
                 [Ident(_, "cdr"), pr] => {
                     let (ty_pr, pr_o) = synthesize(pr, env)?;
-                    try_match! { let Sigma(x, ty_a, ty_d) = &ty_pr; env };
-                    // FIXME: 在此需要编译期计算
+                    try_match! { let Sigma(x, _ty_a, ty_d) = &ty_pr; env };
                     let car_pr = bapp!("car", pr_o.clone());
-                    // FIXME!
-                    let _ty_d_o = substitute_beta_arg(ty_d, x, &car_pr, env);
-                    ((**ty_a).clone(), S("cdr", vec![pr_o]))
+                    let ty_d_o = substitute_beta_arg(ty_d, x, &car_pr, env);
+                    (ty_d_o, S("cdr", vec![pr_o]))
                 }
                 // NatE-1
                 [Ident(_, "which-Nat"), t, b, s] => {
@@ -862,7 +896,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     let arg_o = synthesize_with_type(arg, ty_a, env)?;
                     let ty_r_o = substitute_beta_arg(ty_r, arg_f, &arg_o, env);
                     // TODO: 能保证一次转化为正规形式吗？
-                    (ty_r_o, normalize_fun_beta(f_o, arg_o))
+                    (ty_r_o, app!(f_o, arg_o))
                 }
                 _ => unreachable!("synthesize: unexpected application: {}", e),
             }
@@ -870,13 +904,107 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
     };
 
     tc_log_end!("=> (the {} {})", dpp(&ret.0, env), dpp(&ret.1, env));
-    Ok(ret)
+
+    let (ty_o, e_o) = ret;
+
+    let ty_o = normalize(&ty_o, env);
+    let e_o = normalize(&e_o, env);
+
+    Ok((ty_o, e_o))
+}
+
+/// 表达式正规化，基本就是不断计算，直到不能再计算为止。
+/// TODO: 优化性能
+fn normalize(e: &core::Expr, env: &Env) -> core::Expr {
+    let mut changed = true;
+    let mut e_o = e.clone();
+    while changed {
+        changed = false;
+        e_o = normalize_once(&e_o, env, &mut changed);
+    }
+    e_o
+}
+
+/// 计算一次；返回正规化后的表达式，以及是否发生了变化。
+fn normalize_once(e: &core::Expr, env: &Env, changed: &mut bool) -> core::Expr {
+    use core::Expr::*;
+    match e {
+        I(_) | Atom(_) | Nat(_) => e.clone(),
+        // Hypothesis
+        Identifier(_, idx) => {
+            let (_, (_, def)) = env.get_index(*idx).expect("Identifier index out of bounds");
+            if let Some(d) = &*def.borrow() {
+                *changed = true;
+                normalize_once(&shift_dbi(d, *idx + 1, 0), env, &mut false)
+            } else {
+                e.clone()
+            }
+        }
+        // FunSame-β, ((λ (x) body) arg) -> body[x := arg]
+        App(f, arg) => {
+            let f_o = normalize_once(f, env, changed);
+            let arg_o = normalize_once(arg, env, changed);
+            normalize_fun_beta(f_o, arg_o, changed)
+        }
+        // FunSame-η, (λ (x) (f x)) -> f
+        Lambda(arg, body) => {
+            let body_o = normalize_once(body, &env_ext_arg_notype(env, arg), changed);
+            if let Argument::Symbol(arg) = arg {
+                normalize_fun_eta(arg.clone(), body_o, changed)
+            } else {
+                Lambda(arg.clone(), body_o.into())
+            }
+        }
+        Pi(arg, ty_a, ty_r) => {
+            let ty_a_o = normalize_once(ty_a, env, changed);
+            let ty_r_o = normalize_once(ty_r, &env_ext_arg_notype(env, arg), changed);
+            Pi(arg.clone(), ty_a_o.into(), ty_r_o.into())
+        }
+        Sigma(arg, ty_a, ty_d) => {
+            let ty_a_o = normalize_once(ty_a, env, changed);
+            let ty_d_o = normalize_once(ty_d, &env_ext_arg_notype(env, arg), changed);
+            Sigma(arg.clone(), ty_a_o.into(), ty_d_o.into())
+        }
+        // ΣSame-ι1, (car (cons a d)) -> a
+        S("car", args) => {
+            no_else!( let [p] = &args[..] );
+            let p_o = normalize_once(p, env, changed);
+            if let S("cons", args) = &p_o {
+                no_else!( let [a, _d] = &args[..] );
+                *changed = true;
+                a.clone()
+            } else {
+                S("car", vec![p_o])
+            }
+        }
+        // ΣSame-ι2, (cdr (cons a d)) -> d
+        S("cdr", args) => {
+            no_else!( let [p] = &args[..] );
+            let p_o = normalize_once(p, env, changed);
+            if let S("cons", args) = &p_o {
+                no_else!( let [_a, d] = &args[..] );
+                *changed = true;
+                d.clone()
+            } else {
+                S("cdr", vec![p_o])
+            }
+        }
+        // TODO: ΣSame-η, (cons (car p) (cdr p)) -> p
+        S(bf, args) => {
+            let args_o: Vec<_> = args
+                .into_iter()
+                .map(|arg| normalize_once(arg, env, changed))
+                .collect();
+            S(bf, args_o)
+        }
+    }
 }
 
 // FunSame-β
-fn normalize_fun_beta(f: core::Expr, arg: core::Expr) -> core::Expr {
+fn normalize_fun_beta(f: core::Expr, arg: core::Expr, changed: &mut bool) -> core::Expr {
     use core::Expr::*;
     if let Lambda(arg_f, body) = f {
+        *changed = true;
         let env = Env::new().insert(
             None,
             (core::Expr::I("ignore"), RefCell::new(arg.clone().into())),

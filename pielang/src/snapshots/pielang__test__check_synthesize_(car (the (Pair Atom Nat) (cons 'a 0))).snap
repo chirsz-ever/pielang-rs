@@ -1,0 +1,7 @@
+---
+source: pielang/src/test.rs
+description: "(car (the (Pair Atom Nat) (cons 'a 0)))"
+expression: output
+---
+type: Atom
+expr: 'a

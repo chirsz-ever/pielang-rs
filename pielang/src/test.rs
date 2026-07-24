@@ -161,6 +161,12 @@ fn synthesize_tests() {
         "(the (-> Nat Nat) (lambda (x) ((the (-> Atom Nat) (lambda (y) 0)) 'a)))",
         "(the (-> Nat Nat) (lambda (x) ((the (-> Atom Nat) (lambda (y) (add1 x))) 'a)))",
         "(the (-> (-> (-> Nat Nat) Nat Nat) Nat Nat) (lambda (f x) (f (lambda (y) y) x)))",
+        "((the (→ Nat Nat Nat) (λ (x y) x)) 0 1)",
+        "((the (→ Nat Atom Nat) (λ (x y) x)) 1 'a)",
+        // Pair
+        "(the (Pair Nat Atom) (cons 0 'a))",
+        "(car (the (Pair Atom Nat) (cons 'a 0)))",
+        "(cdr (the (Pair Atom Nat) (cons 'a 0)))",
         // Error cases
         "(the Nat 'a)",
         "(the Atom zero)",
