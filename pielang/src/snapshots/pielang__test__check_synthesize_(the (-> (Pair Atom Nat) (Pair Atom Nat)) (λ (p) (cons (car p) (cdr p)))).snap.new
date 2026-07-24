@@ -1,0 +1,8 @@
+---
+source: pielang/src/test.rs
+assertion_line: 196
+description: (the (-> (Pair Atom Nat) (Pair Atom Nat)) (λ (p) (cons (car p) (cdr p))))
+expression: output
+---
+type: (→ (Pair Atom Nat) (Pair Atom Nat))
+expr: (λ (p) p)

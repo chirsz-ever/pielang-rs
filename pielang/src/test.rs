@@ -167,6 +167,7 @@ fn synthesize_tests() {
         "(the (Pair Nat Atom) (cons 0 'a))",
         "(car (the (Pair Atom Nat) (cons 'a 0)))",
         "(cdr (the (Pair Atom Nat) (cons 'a 0)))",
+        "(the (-> (Pair Atom Nat) (Pair Atom Nat)) (λ (p) (cons (car p) (cdr p))))",
         // Error cases
         "(the Nat 'a)",
         "(the Atom zero)",

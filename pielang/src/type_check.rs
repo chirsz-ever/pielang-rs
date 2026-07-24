@@ -989,7 +989,22 @@ fn normalize_once(e: &core::Expr, env: &Env, changed: &mut bool) -> core::Expr {
                 S("cdr", vec![p_o])
             }
         }
-        // TODO: ΣSame-η, (cons (car p) (cdr p)) -> p
+        // ΣSame-η, (cons (car p) (cdr p)) -> p
+        // FIXME: is_expr_check_same 不需要 ct 参数?
+        S("cons", args) => {
+            no_else!( let [a, d] = &args[..] );
+            let a_o = normalize_once(a, env, changed);
+            let d_o = normalize_once(d, env, changed);
+            if let S("car", p1) = &a_o
+                && let S("cdr", p2) = &d_o
+                && is_expr_check_same(&p1[0], &p2[0], &I("invalid"), env)
+            {
+                *changed = true;
+                p1[0].clone()
+            } else {
+                S("cons", vec![a_o, d_o])
+            }
+        }
         S(bf, args) => {
             let args_o: Vec<_> = args
                 .into_iter()
