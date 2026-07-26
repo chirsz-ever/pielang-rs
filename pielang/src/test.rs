@@ -253,6 +253,7 @@ fn tlt_tests() {
         "(Pair U U)",
         "(Pair Atom U)",
         "(-> U U)",
+        "(iter-Nat 5 3 (lambda (smaller) (add1 smaller)))",
     ];
     for s in exprs {
         eprintln!("{} ... ", s);

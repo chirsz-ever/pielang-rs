@@ -456,9 +456,9 @@ pub fn synthesize_with_type(
                     S("::", vec![e_o, es_o])
                 }
                 // VecI-2
-                ([Ident(_, "vec::"), e, es], "Vec", [ty_e, len]) if is_literal_add1(len) => {
+                ([Ident(_, "vec::"), e, es], "Vec", [ty_e, len]) if is_add1(len) => {
                     let e_o = synthesize_with_type(e, ty_e, env)?;
-                    let sublen = literal_sub1(len);
+                    let sublen = sub1(len);
                     let ty_subvec = S(ty_bf, vec![ty_e.clone(), sublen]);
                     let es_o = synthesize_with_type(es, &ty_subvec, env)?;
                     S("vec::", vec![e_o, es_o])
@@ -519,7 +519,7 @@ fn ident_occur_in(n: usize, e: &core::Expr) -> bool {
     }
 }
 
-fn is_literal_add1(e: &core::Expr) -> bool {
+fn is_add1(e: &core::Expr) -> bool {
     use core::Expr::*;
     match e {
         Nat(0) => false,
@@ -529,16 +529,16 @@ fn is_literal_add1(e: &core::Expr) -> bool {
     }
 }
 
-fn literal_sub1(e: &core::Expr) -> core::Expr {
+fn sub1(e: &core::Expr) -> core::Expr {
     use core::Expr::*;
     match e {
         Nat(n) => {
             debug_assert_ne!(*n, 0);
             Nat(n - 1)
         }
-        S(bf, args) => match (&**bf, &**args) {
-            ("add1", [n]) => n.clone(),
-            _ => unreachable!(),
+        S("add1", args) => {
+            no_else!( let [n] = &**args );
+            n.clone()
         },
         _ => unreachable!(),
     }
@@ -627,7 +627,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                 [Ident(_, "head"), v] => {
                     let (ty_v, v_o) = synthesize(v, env)?;
                     try_match! { let S("Vec", [ty_e, len]) = &ty_v; env };
-                    if is_literal_add1(len) {
+                    if is_add1(len) {
                         (ty_e.clone(), S("head", vec![v_o]))
                     } else {
                         throw!(ErrorKind::TypeNotMatch {
@@ -640,8 +640,8 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                 [Ident(_, "tail"), v] => {
                     let (ty_v, v_o) = synthesize(v, env)?;
                     try_match! { let S("Vec", [ty_e, len]) = &ty_v; env };
-                    if is_literal_add1(len) {
-                        let ty_subv = bapp!("Vec", ty_e.clone(), literal_sub1(len));
+                    if is_add1(len) {
+                        let ty_subv = bapp!("Vec", ty_e.clone(), sub1(len));
                         (ty_subv, S("tail", vec![v_o]))
                     } else {
                         throw!(ErrorKind::TypeNotMatch {
@@ -965,6 +965,18 @@ fn normalize_once(e: &core::Expr, env: &Env, changed: &mut bool) -> core::Expr {
             let ty_d_o = normalize_once(ty_d, &env_ext_arg_notype(env, arg), changed);
             Sigma(arg.clone(), ty_a_o.into(), ty_d_o.into())
         }
+        // NatI-4?
+        S("add1", args) => {
+            no_else!( let [n] = &args[..] );
+            let n_o = normalize_once(n, env, changed);
+            match n_o {
+                Nat(n) => {
+                    *changed = true;
+                    Nat(n + 1)
+                }
+                _ => S("add1", vec![n_o]),
+            }
+        }
         // ΣSame-ι1, (car (cons a d)) -> a
         S("car", args) => {
             no_else!( let [p] = &args[..] );
@@ -1015,16 +1027,31 @@ fn normalize_once(e: &core::Expr, env: &Env, changed: &mut bool) -> core::Expr {
                     *changed = true;
                     b_o
                 }
-                Nat(n) => {
+                Nat(_) | S("add1", _) => {
                     *changed = true;
-                    App(s_o.into(), Nat(*n - 1).into())
-                }
-                S("add1", args) => {
-                    no_else!( let [n] = &args[..] );
-                    *changed = true;
+                    let n = sub1(&t_o);
                     App(s_o.into(), n.clone().into())
                 }
                 _ => S("which-Nat", vec![t_o, b_o, s_o]),
+            }
+        }
+        S("iter-Nat", args) => {
+            no_else!( let [t, b, s] = &args[..] );
+            let t_o = normalize_once(t, env, changed);
+            let b_o = normalize_once(b, env, changed);
+            let s_o = normalize_once(s, env, changed);
+            match &t_o {
+                Nat(0) => {
+                    *changed = true;
+                    b_o
+                }
+                Nat(_) | S("add1", _) => {
+                    *changed = true;
+                    let n_sub1 = sub1(&t_o);
+                    let iter_sub1 = S("iter-Nat", vec![n_sub1.clone(), b_o.clone(), s_o.clone()]);
+                    App(s_o.into(), iter_sub1.into())
+                }
+                _ => S("iter-Nat", vec![t_o, b_o, s_o]),
             }
         }
         S(bf, args) => {

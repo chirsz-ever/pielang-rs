@@ -4,4 +4,4 @@ description: (add1 zero)
 expression: output
 ---
 type: Nat
-expr: (add1 0)
+expr: 1
