@@ -3,6 +3,7 @@ name = "pielang"
 description = "RIIR Pie, a dependent type language"
 keywords = ["programming-language", "interpreter", "pie", "pielang"]
 categories = ["compilers"]
+exclude = ["snapshots"]
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
