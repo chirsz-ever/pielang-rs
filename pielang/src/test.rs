@@ -247,6 +247,8 @@ fn tlt_tests() {
         "(check-same (→ Nat Nat) (λ (x) x) (λ (y) 0))",
         "(check-same (→ Nat (Pair Nat Nat)) (λ (a) (cons a a)) (λ (d) (cons d d)))",
         "(check-same (→ Atom Nat Atom) (λ (x y) x) (λ (a b) a))",
+        "(which-Nat zero 'naught (λ (n) 'more))",
+        "(which-Nat 4 'naught (λ (n) 'more))",
     ];
     for s in exprs {
         eprintln!("{} ... ", s);

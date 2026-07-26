@@ -1005,6 +1005,28 @@ fn normalize_once(e: &core::Expr, env: &Env, changed: &mut bool) -> core::Expr {
                 S("cons", vec![a_o, d_o])
             }
         }
+        S("which-Nat", args) => {
+            no_else!( let [t, b, s] = &args[..] );
+            let t_o = normalize_once(t, env, changed);
+            let b_o = normalize_once(b, env, changed);
+            let s_o = normalize_once(s, env, changed);
+            match &t_o {
+                Nat(0) => {
+                    *changed = true;
+                    b_o
+                }
+                Nat(n) => {
+                    *changed = true;
+                    App(s_o.into(), Nat(*n - 1).into())
+                }
+                S("add1", args) => {
+                    no_else!( let [n] = &args[..] );
+                    *changed = true;
+                    App(s_o.into(), n.clone().into())
+                }
+                _ => S("which-Nat", vec![t_o, b_o, s_o]),
+            }
+        }
         S(bf, args) => {
             let args_o: Vec<_> = args
                 .into_iter()
