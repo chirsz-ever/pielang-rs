@@ -1,0 +1,7 @@
+---
+source: pielang/src/test.rs
+description: (iter-Nat 0 3 (lambda (smaller) (add1 smaller)))
+expression: output
+---
+type: Nat
+expr: 3
