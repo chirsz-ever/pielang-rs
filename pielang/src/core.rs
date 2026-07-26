@@ -149,11 +149,9 @@ where
             for (i, (k, _)) in env.iter().enumerate() {
                 let same_name = k.as_ref().is_some_and(|k| &**k == id);
                 let same_idx = i == idx;
-                if same_name && same_idx {
-                    return false;
-                } else if same_name && !same_idx {
-                    return true;
-                } else if !same_name && same_idx {
+                if same_name {
+                    return !same_idx;
+                } else if same_idx {
                     return true;
                 }
             }

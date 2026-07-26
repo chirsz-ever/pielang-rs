@@ -289,7 +289,7 @@ fn shift_dbi(e: &core::Expr, inc: usize, depth: usize) -> core::Expr {
 fn substitute(expr: &core::Expr, var: usize, e: &core::Expr, depth: usize) -> core::Expr {
     use core::Expr::*;
 
-    let ret = match expr {
+    match expr {
         Nat(_) | Atom(_) | I(_) => expr.clone(),
         Identifier(i, idx) => {
             if *idx == var {
@@ -326,9 +326,7 @@ fn substitute(expr: &core::Expr, var: usize, e: &core::Expr, depth: usize) -> co
             let body_o = substitute(body, var + 1, e, depth + 1);
             Lambda(a.clone(), Ref::new(body_o))
         }
-    };
-
-    ret
+    }
 }
 
 /// 对常用的 Argument 下 beta 变换简写
@@ -497,7 +495,7 @@ fn normalize_fun_eta(arg: Ref<str>, r: core::Expr, changed: &mut bool) -> core::
     use core::Expr::*;
     if let App(f, arg_f) = &r
         && let Identifier(_, 0) = &**arg_f
-        && ident_occur_in(0, &*f)
+        && ident_occur_in(0, f)
     {
         *changed = true;
         (**f).clone()
@@ -539,7 +537,7 @@ fn sub1(e: &core::Expr) -> core::Expr {
         S("add1", args) => {
             no_else!( let [n] = &**args );
             n.clone()
-        },
+        }
         _ => unreachable!(),
     }
 }
@@ -884,7 +882,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                         (ty_f, f_o) = synthesize(f, env)?;
                     } else {
                         // FunE-2
-                        no_else!( let [ args_n_1 @ .., arg_n ] = &args[..] );
+                        no_else!( let [ args_n_1 @ .., arg_n ] = args );
                         let mut sub_exprs = vec![f.clone()];
                         sub_exprs.extend_from_slice(args_n_1);
                         // (f a b c) -> ((f a b) c)
@@ -1068,14 +1066,14 @@ fn normalize_once(e: &core::Expr, env: &Env, changed: &mut bool) -> core::Expr {
                     *changed = true;
                     let n_sub1 = sub1(&t_o);
                     let rec_sub1 = S("rec-Nat", vec![n_sub1.clone(), b_o, s_o.clone()]);
-                    app!(s_o.into(), n_sub1.into(), rec_sub1.into())
+                    app!(s_o, n_sub1, rec_sub1)
                 }
                 _ => S("rec-Nat", vec![t_o, b_o, s_o]),
             }
         }
         S(bf, args) => {
             let args_o: Vec<_> = args
-                .into_iter()
+                .iter()
                 .map(|arg| normalize_once(arg, env, changed))
                 .collect();
             S(bf, args_o)
