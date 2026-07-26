@@ -1,6 +1,5 @@
 use crate::{
-    ast::{self, is_builtin_name},
-    core, utils,
+    ast::{self, Id, is_builtin_name}, core, utils,
 };
 use ast::to_builtin_name as bn;
 use core::{Argument, DBIPPrint as dpp, Expr::Nat};
@@ -1107,8 +1106,24 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
     // TODO: 改进 El 规则
     let ret = match e {
         // FunF-1, FunF-2
-        PiExpr(_, _args, _body) => {
-            todo!("resolve_type: PiExpr")
+        PiExpr(sp, args, body) => {
+            match args.as_slice() {
+                // FunF-1
+                [(Id(_, id), ty_a)] => {
+                    let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
+                    let id = (*id).into();
+                    let (l_r, ty_r_o) = resolve_type(body, &&env_ext(env, &id, &ty_a_o))?;
+                    (std::cmp::max(l_a, l_r), Pi(Argument::Symbol(id), ty_a_o.into(), ty_r_o.into()))
+                }
+                // FunF-2
+                [(Id(_, id), ty_a), rargs @ ..] => {
+                    let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
+                    let id = (*id).into();
+                    let (l_r, ty_r_o) = resolve_type(&PiExpr(*sp, rargs.to_vec(), body.clone()), &env_ext(env, &id, &ty_a_o))?;
+                    (std::cmp::max(l_a, l_r), Pi(Argument::Symbol(id), ty_a_o.into(), ty_r_o.into()))
+                }
+                _ => unreachable!(),
+            }
         }
         // FunF->1, FunF->2
         ArrowExpr(sp, args) => {
