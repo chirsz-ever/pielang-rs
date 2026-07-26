@@ -1,0 +1,7 @@
+---
+source: pielang/src/test.rs
+description: (-> U U)
+expression: output
+---
+type: (U 1)
+expr: (→ U U)
