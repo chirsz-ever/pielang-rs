@@ -84,7 +84,16 @@ fn process_expression(
 ) -> anyhow::Result<()> {
     check_expression(expr, env)?;
     let (ty_o, e_o) = tc::synthesize(expr, env)?;
-    println!("(the {} {})", dpp(&ty_o, env), dpp(&e_o, env));
+    match ty_o {
+        pielang::core::Expr::S("U", _) => {
+            // > When an expression is a type, but does not have a type, Pie replies with just its normal form.
+            // > -- Recess - Forkful of Pie
+            println!("{}", dpp(&e_o, env));
+        }
+        _ => {
+            println!("(the {} {})", dpp(&ty_o, env), dpp(&e_o, env));
+        }
+    }
     Ok(())
 }
 
