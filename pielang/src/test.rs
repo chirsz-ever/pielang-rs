@@ -1,7 +1,7 @@
-use crate::ast::check_syntax;
+use crate::ast;
 use crate::core;
+use crate::type_check as tc;
 use crate::utils::StackMap;
-use crate::{ast, type_check as tc};
 use core::DBIPPrint as dpp;
 
 #[test]
@@ -105,6 +105,8 @@ fn check_synthesize(expr: &str) -> anyhow::Result<String> {
     let env = tc::Env::new();
     check_expression(&expr)?;
     let (ty_o, e_o) = tc::synthesize(&expr, &env)?;
+    let e_o = tc::normalize(&e_o, &env);
+    let ty_o = tc::normalize(&ty_o, &env);
     Ok(format!(
         "type: {}\nexpr: {}\n",
         dpp(&ty_o, &env),
@@ -113,7 +115,7 @@ fn check_synthesize(expr: &str) -> anyhow::Result<String> {
 }
 
 fn check_expression(expr: &ast::Expr) -> anyhow::Result<()> {
-    check_syntax(expr, &StackMap::new())?;
+    ast::check_syntax(expr, &StackMap::new())?;
     Ok(())
 }
 
@@ -125,6 +127,11 @@ fn check_same(ty: ast::Expr, e1: ast::Expr, e2: ast::Expr) -> anyhow::Result<()>
     let (_, ty_o) = tc::resolve_type(&ty, &env)?;
     let e1_o = tc::synthesize_with_type(&e1, &ty_o, &env)?;
     let e2_o = tc::synthesize_with_type(&e2, &ty_o, &env)?;
+
+    let e1_o = tc::normalize(&e1_o, &env);
+    let e2_o = tc::normalize(&e2_o, &env);
+    let ty_o = tc::normalize(&ty_o, &env);
+
     tc::expr_check_same(&e1_o, &e2_o, &ty_o, &env)?;
     Ok(())
 }
@@ -209,6 +216,8 @@ fn check_statement(expr: &str) -> anyhow::Result<String> {
             check_expression(&e)?;
             let env = tc::Env::new();
             let (ty_o, e_o) = tc::synthesize(&e, &env)?;
+            let e_o = tc::normalize(&e_o, &env);
+            let ty_o = tc::normalize(&ty_o, &env);
             Ok(format!(
                 "type: {}\nexpr: {}\n",
                 dpp(&ty_o, &env),

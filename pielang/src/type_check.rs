@@ -1,13 +1,16 @@
-use crate::{
-    ast::{self, Id, is_builtin_name}, core, utils,
-};
+use crate::ast;
+use crate::core;
+use crate::utils;
+use ast::Id;
+use ast::is_builtin_name;
 use ast::to_builtin_name as bn;
-use core::{Argument, DBIPPrint as dpp, Expr::Nat};
-use std::{
-    cell::{Cell, RefCell},
-    fmt,
-};
-use utils::{LocatedError, Ref};
+use core::Argument;
+use core::DBIPPrint as dpp;
+use std::cell::Cell;
+use std::cell::RefCell;
+use std::fmt;
+use utils::LocatedError;
+use utils::Ref;
 
 thread_local! {
     static INDENT: Cell<usize> = const { Cell::new(0) };
@@ -379,8 +382,7 @@ fn switch_rule(e: &ast::Expr, ty: &core::Expr, env: &Env) -> Result<core::Expr, 
 /// 检查表达式 `e` 属于（已检查的）类型 `ty`，返回检查结果。
 /// 第六种 Judgement，见 Figure B.1。
 /// 对于构造式，有唯一相关的类型与之匹配；
-/// 其它表达式则应用 Which 规则：试图综合得出其类型，再将结果与所给类型比较。
-/// 返回正规化后的表达式。
+/// 其它表达式则应用 Switch 规则：试图综合得出其类型，再将结果与所给类型比较。
 pub fn synthesize_with_type(
     e: &ast::Expr,
     ty: &core::Expr,
@@ -543,7 +545,6 @@ fn sub1(e: &core::Expr) -> core::Expr {
 
 /// 对表达式 `e` 进行类型检查，返回检查结果。
 /// 第七种 Judgement，见 Figure B.1。
-/// 返回正规化后的表达式。
 pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), Error> {
     tc_log!("synthesize `{}`", e);
 
@@ -569,7 +570,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
             for (i, (name, (ty, _))) in env.iter().enumerate() {
                 if name.as_deref().is_some_and(|n| *n == **id) {
                     // convert to de Bruijn index
-                    // 在最后的 normalize 中会将 def 替换为其定义
+                    // 在 normalize 中会将 def 替换为其定义
                     break 'x (ty.clone(), Identifier((*id).into(), i));
                 }
             }
@@ -901,18 +902,12 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
     };
 
     tc_log_end!("=> (the {} {})", dpp(&ret.0, env), dpp(&ret.1, env));
-
-    let (ty_o, e_o) = ret;
-
-    let ty_o = normalize(&ty_o, env);
-    let e_o = normalize(&e_o, env);
-
-    Ok((ty_o, e_o))
+    Ok(ret)
 }
 
 /// 表达式正规化，基本就是不断计算，直到不能再计算为止。
 /// TODO: 优化性能
-fn normalize(e: &core::Expr, env: &Env) -> core::Expr {
+pub fn normalize(e: &core::Expr, env: &Env) -> core::Expr {
     let mut changed = true;
     let mut e_o = e.clone();
     while changed {
@@ -1112,15 +1107,24 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
                 [(Id(_, id), ty_a)] => {
                     let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
                     let id = (*id).into();
-                    let (l_r, ty_r_o) = resolve_type(body, &&env_ext(env, &id, &ty_a_o))?;
-                    (std::cmp::max(l_a, l_r), Pi(Argument::Symbol(id), ty_a_o.into(), ty_r_o.into()))
+                    let (l_r, ty_r_o) = resolve_type(body, &env_ext(env, &id, &ty_a_o))?;
+                    (
+                        std::cmp::max(l_a, l_r),
+                        Pi(Argument::Symbol(id), ty_a_o.into(), ty_r_o.into()),
+                    )
                 }
                 // FunF-2
                 [(Id(_, id), ty_a), rargs @ ..] => {
                     let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
                     let id = (*id).into();
-                    let (l_r, ty_r_o) = resolve_type(&PiExpr(*sp, rargs.to_vec(), body.clone()), &env_ext(env, &id, &ty_a_o))?;
-                    (std::cmp::max(l_a, l_r), Pi(Argument::Symbol(id), ty_a_o.into(), ty_r_o.into()))
+                    let (l_r, ty_r_o) = resolve_type(
+                        &PiExpr(*sp, rargs.to_vec(), body.clone()),
+                        &env_ext(env, &id, &ty_a_o),
+                    )?;
+                    (
+                        std::cmp::max(l_a, l_r),
+                        Pi(Argument::Symbol(id), ty_a_o.into(), ty_r_o.into()),
+                    )
                 }
                 _ => unreachable!(),
             }
@@ -1219,7 +1223,7 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
 #[inline]
 fn resolve_type_rule(ty: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), Error> {
     let (l, t_o) = resolve_type(ty, env)?;
-    Ok((U!(Nat(l)), t_o))
+    Ok((U!(core::Expr::Nat(l)), t_o))
 }
 
 /// 检查是否相同类型

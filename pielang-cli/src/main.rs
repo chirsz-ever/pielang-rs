@@ -80,10 +80,19 @@ fn main() -> anyhow::Result<()> {
 fn process_expression(
     expr: &pielang::ast::Expr,
     env: &Env,
-    _check_type_only: bool,
+    check_type_only: bool,
 ) -> anyhow::Result<()> {
     check_expression(expr, env)?;
-    let (ty_o, e_o) = tc::synthesize(expr, env)?;
+    let (ty_s, e_s) = tc::synthesize(expr, env)?;
+    let (ty_o, e_o);
+    if check_type_only {
+        ty_o = ty_s;
+        e_o = e_s;
+    } else {
+        ty_o = tc::normalize(&ty_s, env);
+        e_o = tc::normalize(&e_s, env);
+    }
+
     match ty_o {
         pielang::core::Expr::S("U", _) => {
             // > When an expression is a type, but does not have a type, Pie replies with just its normal form.
@@ -109,6 +118,11 @@ fn process_check_same(
     let (_, ty_o) = tc::resolve_type(ty, env)?;
     let e1_o = tc::synthesize_with_type(e1, &ty_o, env)?;
     let e2_o = tc::synthesize_with_type(e2, &ty_o, env)?;
+
+    let e1_o = tc::normalize(&e1_o, env);
+    let e2_o = tc::normalize(&e2_o, env);
+    let ty_o = tc::normalize(&ty_o, env);
+
     log::trace!("-----");
     tc::expr_check_same(&e1_o, &e2_o, &ty_o, env)?;
     Ok(())
@@ -123,6 +137,7 @@ fn process_claim(sym: &str, ty: &pielang::ast::Expr, env: &mut Env) -> anyhow::R
     }
     check_expression(ty, env)?;
     let (_, ty_o) = tc::resolve_type(ty, env)?;
+    let ty_o = tc::normalize(&ty_o, env);
     *env = env.insert(Some(sym.into()), (ty_o, Default::default()));
     Ok(())
 }
@@ -136,6 +151,7 @@ fn process_define(sym: &str, expr: &pielang::ast::Expr, env: &mut Env) -> anyhow
     }
     check_expression(expr, env)?;
     let e_o = tc::synthesize_with_type(expr, ty, env)?;
+    let e_o = tc::normalize(&e_o, env);
     expr_ref.replace(Some(e_o));
     Ok(())
 }
