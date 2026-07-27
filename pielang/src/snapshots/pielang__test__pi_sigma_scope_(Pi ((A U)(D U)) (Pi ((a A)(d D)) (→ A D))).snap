@@ -1,0 +1,7 @@
+---
+source: pielang/src/test.rs
+description: (Pi ((A U)(D U)) (Pi ((a A)(d D)) (→ A D)))
+expression: output
+---
+type: (U 1)
+expr: (Π ((A U)(D U)(a A)(d D)) (→ A D))

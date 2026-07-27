@@ -357,10 +357,11 @@ fn env_ext(env: &Env, name: &Ref<str>, ty: &core::Expr) -> Env {
 }
 
 fn env_ext_arg(env: &Env, name: &Argument, ty: &core::Expr) -> Env {
-    match name {
-        Argument::Dummy => env.insert(None, (ty.clone(), Default::default())),
-        Argument::Symbol(n) => env_ext(env, n, ty),
-    }
+    env.insert(name.into(), (ty.clone(), Default::default()))
+}
+
+fn env_ext_dummy(env: &Env, ty: &core::Expr) -> Env {
+    env.insert(None, (ty.clone(), Default::default()))
 }
 
 fn env_ext_arg_notype(env: &Env, name: &Argument) -> Env {
@@ -1108,17 +1109,20 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
         // FunF->1, FunF->2
         ArrowExpr(sp, args) => {
             match args.as_slice() {
-                // FunF->1
+                // FunF->1, (→ A R) -> (Π ((_ A)) R)
                 [ty_a, ty_r] => {
                     let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
-                    let (l_r, ty_r_o) = resolve_type(ty_r, env)?;
+                    let (l_r, ty_r_o) = resolve_type(ty_r, &env_ext_dummy(env, &ty_a_o))?;
                     (std::cmp::max(l_a, l_r), arrow!(ty_a_o, ty_r_o))
                 }
-                // FunF->2
+                // FunF->2, (→ A B ... R) -> (Π ((_ A)) (→ B ... R))
                 [ty_a, rargs @ ..] => {
                     let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
                     // FIXME: right span
-                    let (l_r, ty_r_o) = resolve_type(&ArrowExpr(*sp, rargs.to_vec()), env)?;
+                    let (l_r, ty_r_o) = resolve_type(
+                        &ArrowExpr(*sp, rargs.to_vec()),
+                        &env_ext_dummy(env, &ty_a_o),
+                    )?;
                     (std::cmp::max(l_a, l_r), arrow!(ty_a_o, ty_r_o))
                 }
                 _ => unreachable!(),
@@ -1139,7 +1143,8 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
                 // ΣF-Pair
                 [Ident(_, "Pair"), ty_a, ty_d] => {
                     let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
-                    let (l_d, ty_d_o) = resolve_type(ty_d, env)?;
+                    // (Pair A D) -> (Σ ((_ : A)) D), introduced a dummy argument
+                    let (l_d, ty_d_o) = resolve_type(ty_d, &env_ext_dummy(env, &ty_a_o))?;
                     (
                         std::cmp::max(l_a, l_d),
                         Sigma(Argument::Dummy, Ref::new(ty_a_o), Ref::new(ty_d_o)),

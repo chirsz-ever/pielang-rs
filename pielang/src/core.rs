@@ -200,31 +200,55 @@ where
                 Ok(())
             }
             Pi(arg, ty, body) => {
-                let new_env = ext_env_arg(env, arg);
+                let mut current_env = ext_env_arg(env, arg);
                 match arg {
+                    // (→ A (→ B C)) => (→ A B C)
                     Argument::Dummy => {
-                        let ty = DBIPPrint(ty, &new_env);
-                        write!(f, "(→ {}", ty)?;
+                        write!(f, "(→ {}", DBIPPrint(ty, env))?;
                         let mut current: &Expr = body;
                         loop {
                             match current {
                                 Pi(Argument::Dummy, next_ty, next_body) => {
-                                    let next_env = env.insert(None, Default::default());
-                                    let next_ty = DBIPPrint(next_ty, &next_env);
-                                    write!(f, " {}", next_ty)?;
+                                    write!(f, " {}", DBIPPrint(next_ty, &current_env))?;
+                                    current_env = ext_env_arg(&current_env, &Argument::Dummy);
                                     current = &**next_body;
                                 }
                                 _ => {
-                                    write!(f, " {})", DBIPPrint(current, &new_env))?;
+                                    write!(f, " {})", DBIPPrint(current, &current_env))?;
                                     break;
                                 }
                             }
                         }
                     }
+                    // (Π ((x A)) (Π ((y B)) C)) => (Π ((x A)(y B)) C)
                     Argument::Symbol(arg) => {
-                        let ty = DBIPPrint(ty, &new_env);
-                        let body = DBIPPrint(body, &new_env);
-                        write!(f, "(Π (({} {})) {})", arg, ty, body)?;
+                        // let ty = DBIPPrint(ty, &env);
+                        // let body = DBIPPrint(body, &current_env);
+                        // write!(f, "(Π (({} {})) {})", arg, ty, body)?;
+                        write!(f, "(Π (({} {})", arg, DBIPPrint(ty, env))?;
+                        let mut current: &Expr = body;
+                        loop {
+                            match current {
+                                Pi(
+                                    next_arg @ Argument::Symbol(next_arg_name),
+                                    next_ty,
+                                    next_body,
+                                ) => {
+                                    write!(
+                                        f,
+                                        "({} {})",
+                                        next_arg_name,
+                                        DBIPPrint(next_ty, &current_env)
+                                    )?;
+                                    current_env = ext_env_arg(&current_env, next_arg);
+                                    current = &**next_body;
+                                }
+                                _ => {
+                                    write!(f, ") {})", DBIPPrint(current, &current_env))?;
+                                    break;
+                                }
+                            }
+                        }
                     }
                 }
                 Ok(())
@@ -233,12 +257,12 @@ where
                 let new_env = ext_env_arg(env, arg);
                 match arg {
                     Argument::Dummy => {
-                        let ty = DBIPPrint(ty, &new_env);
+                        let ty = DBIPPrint(ty, env);
                         let body = DBIPPrint(body, &new_env);
                         write!(f, "(Pair {} {})", ty, body)
                     }
                     Argument::Symbol(arg) => {
-                        let ty = DBIPPrint(ty, &new_env);
+                        let ty = DBIPPrint(ty, env);
                         let body = DBIPPrint(body, &new_env);
                         write!(f, "(Σ (({} {})) {})", arg, ty, body)
                     }

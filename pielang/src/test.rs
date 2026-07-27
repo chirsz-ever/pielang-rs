@@ -277,3 +277,21 @@ fn tlt_tests() {
         });
     }
 }
+
+#[test]
+fn pi_sigma_scope() {
+    let exprs = [
+        "(Pi ((A U)(D U)) (→ A D))",
+        "(Pi ((A U)(D U)) (Pair A D))",
+        "(Pi ((A U)(D U)) (Pi ((a A)(d D)) (→ A D)))",
+    ];
+    for s in exprs {
+        eprintln!("{} ... ", s);
+        let output = check_synthesize(s).unwrap_or_else(|e| format!("Error: {e}"));
+        insta::with_settings!({
+            description => s,
+        }, {
+            insta::assert_snapshot!(format!("pi_sigma_scope_{}", s), output);
+        });
+    }
+}
