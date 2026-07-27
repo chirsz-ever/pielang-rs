@@ -490,21 +490,6 @@ pub fn synthesize_with_type(
     Ok(ret)
 }
 
-// FunSame-η
-// (λ (x) (f x)) -> f
-fn normalize_fun_eta(arg: Ref<str>, r: core::Expr, changed: &mut bool) -> core::Expr {
-    use core::Expr::*;
-    if let App(f, arg_f) = &r
-        && let Identifier(_, 0) = &**arg_f
-        && ident_occur_in(0, f)
-    {
-        *changed = true;
-        (**f).clone()
-    } else {
-        Lambda(Argument::Symbol(arg), r.into())
-    }
-}
-
 fn ident_occur_in(n: usize, e: &core::Expr) -> bool {
     use core::Expr::*;
     match e {
@@ -893,7 +878,6 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     try_match! { let Pi(arg_f, ty_a, ty_r) = &ty_f; env };
                     let arg_o = synthesize_with_type(arg, ty_a, env)?;
                     let ty_r_o = substitute_beta_arg(ty_r, arg_f, &arg_o, env);
-                    // TODO: 能保证一次转化为正规形式吗？
                     (ty_r_o, app!(f_o, arg_o))
                 }
                 _ => unreachable!("synthesize: unexpected application: {}", e),
@@ -908,185 +892,177 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
 /// 表达式正规化，基本就是不断计算，直到不能再计算为止。
 /// TODO: 优化性能
 pub fn normalize(e: &core::Expr, env: &Env) -> core::Expr {
-    let mut changed = true;
     let mut e_o = e.clone();
-    while changed {
-        changed = false;
-        e_o = normalize_once(&e_o, env, &mut changed);
+    while let Some(next) = normalize_once(&e_o, env) {
+        e_o = next;
     }
     e_o
 }
 
-/// 计算一次；返回正规化后的表达式，以及是否发生了变化。
-fn normalize_once(e: &core::Expr, env: &Env, changed: &mut bool) -> core::Expr {
+/// 正规化子表达式，返回 (是否变化, 正规化结果)。
+/// 利用 Deref coercion，$e 可以是 &Expr 或 &Rc<Expr>。
+macro_rules! norm {
+    ($e:expr, $env:expr) => {{
+        let __e: &core::Expr = $e;
+        match normalize_once(__e, $env) {
+            Some(v) => (true, v),
+            None => (false, __e.clone()),
+        }
+    }};
+}
+
+/// 如果条件为 true，返回 Some($e)，否则 None。
+macro_rules! some_if {
+    ($cond:expr => $e:expr) => {
+        if $cond { Some($e) } else { None }
+    };
+}
+
+/// 计算一次；如果无法进一步计算则返回 None。
+fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
     use core::Expr::*;
     match e {
-        I(_) | Atom(_) | Nat(_) => e.clone(),
+        I(_) | Atom(_) | Nat(_) => None,
         // Hypothesis
         Identifier(_, idx) => {
             let (_, (_, def)) = env.get_index(*idx).expect("Identifier index out of bounds");
-            if let Some(d) = &*def.borrow() {
-                *changed = true;
-                normalize_once(&shift_dbi(d, *idx + 1, 0), env, &mut false)
-            } else {
-                e.clone()
-            }
+            let d = def.borrow();
+            d.as_ref().map(|d| shift_dbi(d, *idx + 1, 0))
         }
         // FunSame-β, ((λ (x) body) arg) -> body[x := arg]
         App(f, arg) => {
-            let f_o = normalize_once(f, env, changed);
-            let arg_o = normalize_once(arg, env, changed);
-            normalize_fun_beta(f_o, arg_o, changed)
+            let (c1, f_o) = norm!(f, env);
+            let (c2, arg_o) = norm!(arg, env);
+            if let Lambda(arg_f, body) = &f_o {
+                Some(substitute_beta_arg(body, arg_f, &arg_o, env))
+            } else {
+                some_if!(c1 || c2 => App(Ref::new(f_o), Ref::new(arg_o)))
+            }
         }
         // FunSame-η, (λ (x) (f x)) -> f
         Lambda(arg, body) => {
-            let body_o = normalize_once(body, &env_ext_arg_notype(env, arg), changed);
-            if let Argument::Symbol(arg) = arg {
-                normalize_fun_eta(arg.clone(), body_o, changed)
+            let (c, body_o) = norm!(body, &env_ext_arg_notype(env, arg));
+            if let Argument::Symbol(a) = arg {
+                if let App(f, arg_f) = &body_o
+                    && let Identifier(_, 0) = &**arg_f
+                    && ident_occur_in(0, f)
+                {
+                    Some((**f).clone())
+                } else {
+                    some_if!(c => Lambda(Argument::Symbol(a.clone()), Ref::new(body_o)))
+                }
             } else {
-                Lambda(arg.clone(), body_o.into())
+                some_if!(c => Lambda(arg.clone(), Ref::new(body_o)))
             }
         }
         Pi(arg, ty_a, ty_r) => {
-            let ty_a_o = normalize_once(ty_a, env, changed);
-            let ty_r_o = normalize_once(ty_r, &env_ext_arg_notype(env, arg), changed);
-            Pi(arg.clone(), ty_a_o.into(), ty_r_o.into())
+            let (c1, ty_a_o) = norm!(ty_a, env);
+            let (c2, ty_r_o) = norm!(ty_r, &env_ext_arg_notype(env, arg));
+            some_if!(c1 || c2 => Pi(arg.clone(), ty_a_o.into(), ty_r_o.into()))
         }
         Sigma(arg, ty_a, ty_d) => {
-            let ty_a_o = normalize_once(ty_a, env, changed);
-            let ty_d_o = normalize_once(ty_d, &env_ext_arg_notype(env, arg), changed);
-            Sigma(arg.clone(), ty_a_o.into(), ty_d_o.into())
+            let (c1, ty_a_o) = norm!(ty_a, env);
+            let (c2, ty_d_o) = norm!(ty_d, &env_ext_arg_notype(env, arg));
+            some_if!(c1 || c2 => Sigma(arg.clone(), ty_a_o.into(), ty_d_o.into()))
         }
         // NatI-4?
         S("add1", args) => {
             no_else!( let [n] = &args[..] );
-            let n_o = normalize_once(n, env, changed);
+            let (c, n_o) = norm!(n, env);
             match n_o {
-                Nat(n) => {
-                    *changed = true;
-                    Nat(n + 1)
-                }
-                _ => S("add1", vec![n_o]),
+                Nat(v) => Some(Nat(v + 1)),
+                n_o => some_if!(c => S("add1", vec![n_o])),
             }
         }
         // ΣSame-ι1, (car (cons a d)) -> a
         S("car", args) => {
             no_else!( let [p] = &args[..] );
-            let p_o = normalize_once(p, env, changed);
-            if let S("cons", args) = &p_o {
-                no_else!( let [a, _d] = &args[..] );
-                *changed = true;
-                a.clone()
+            let (c, p_o) = norm!(p, env);
+            if let S("cons", cons_args) = &p_o {
+                no_else!( let [a, _d] = &cons_args[..] );
+                Some(a.clone())
             } else {
-                S("car", vec![p_o])
+                some_if!(c => S("car", vec![p_o]))
             }
         }
         // ΣSame-ι2, (cdr (cons a d)) -> d
         S("cdr", args) => {
             no_else!( let [p] = &args[..] );
-            let p_o = normalize_once(p, env, changed);
-            if let S("cons", args) = &p_o {
-                no_else!( let [_a, d] = &args[..] );
-                *changed = true;
-                d.clone()
+            let (c, p_o) = norm!(p, env);
+            if let S("cons", cons_args) = &p_o {
+                no_else!( let [_a, d] = &cons_args[..] );
+                Some(d.clone())
             } else {
-                S("cdr", vec![p_o])
+                some_if!(c => S("cdr", vec![p_o]))
             }
         }
         // ΣSame-η, (cons (car p) (cdr p)) -> p
         // FIXME: is_expr_check_same 不需要 ct 参数?
         S("cons", args) => {
             no_else!( let [a, d] = &args[..] );
-            let a_o = normalize_once(a, env, changed);
-            let d_o = normalize_once(d, env, changed);
+            let (c1, a_o) = norm!(a, env);
+            let (c2, d_o) = norm!(d, env);
             if let S("car", p1) = &a_o
                 && let S("cdr", p2) = &d_o
                 && is_expr_check_same(&p1[0], &p2[0], &I("invalid"), env)
             {
-                *changed = true;
-                p1[0].clone()
+                Some(p1[0].clone())
             } else {
-                S("cons", vec![a_o, d_o])
+                some_if!(c1 || c2 => S("cons", vec![a_o, d_o]))
             }
         }
         S("which-Nat", args) => {
             no_else!( let [t, b, s] = &args[..] );
-            let t_o = normalize_once(t, env, changed);
-            let b_o = normalize_once(b, env, changed);
-            let s_o = normalize_once(s, env, changed);
-            match &t_o {
-                Nat(0) => {
-                    *changed = true;
-                    b_o
-                }
-                Nat(_) | S("add1", _) => {
-                    *changed = true;
-                    let n = sub1(&t_o);
-                    App(s_o.into(), n.clone().into())
-                }
-                _ => S("which-Nat", vec![t_o, b_o, s_o]),
+            let (c1, t_o) = norm!(t, env);
+            let (c2, b_o) = norm!(b, env);
+            let (c3, s_o) = norm!(s, env);
+            if matches!(&t_o, Nat(0)) {
+                Some(b_o)
+            } else if is_add1(&t_o) {
+                let n = sub1(&t_o);
+                Some(App(s_o.into(), n.into()))
+            } else {
+                some_if!(c1 || c2 || c3 => S("which-Nat", vec![t_o, b_o, s_o]))
             }
         }
         S("iter-Nat", args) => {
             no_else!( let [t, b, s] = &args[..] );
-            let t_o = normalize_once(t, env, changed);
-            let b_o = normalize_once(b, env, changed);
-            let s_o = normalize_once(s, env, changed);
-            match &t_o {
-                Nat(0) => {
-                    *changed = true;
-                    b_o
-                }
-                Nat(_) | S("add1", _) => {
-                    *changed = true;
-                    let n_sub1 = sub1(&t_o);
-                    let iter_sub1 = S("iter-Nat", vec![n_sub1.clone(), b_o.clone(), s_o.clone()]);
-                    App(s_o.into(), iter_sub1.into())
-                }
-                _ => S("iter-Nat", vec![t_o, b_o, s_o]),
+            let (c1, t_o) = norm!(t, env);
+            let (c2, b_o) = norm!(b, env);
+            let (c3, s_o) = norm!(s, env);
+            if matches!(&t_o, Nat(0)) {
+                Some(b_o)
+            } else if is_add1(&t_o) {
+                let n_sub1 = sub1(&t_o);
+                let iter_sub1 = S("iter-Nat", vec![n_sub1, b_o.clone(), s_o.clone()]);
+                Some(App(s_o.into(), iter_sub1.into()))
+            } else {
+                some_if!(c1 || c2 || c3 => S("iter-Nat", vec![t_o, b_o, s_o]))
             }
         }
         S("rec-Nat", args) => {
             no_else!( let [t, b, s] = &args[..] );
-            let t_o = normalize_once(t, env, changed);
-            let b_o = normalize_once(b, env, changed);
-            let s_o = normalize_once(s, env, changed);
-            match &t_o {
-                Nat(0) => {
-                    *changed = true;
-                    b_o
-                }
-                Nat(_) | S("add1", _) => {
-                    *changed = true;
-                    let n_sub1 = sub1(&t_o);
-                    let rec_sub1 = S("rec-Nat", vec![n_sub1.clone(), b_o, s_o.clone()]);
-                    app!(s_o, n_sub1, rec_sub1)
-                }
-                _ => S("rec-Nat", vec![t_o, b_o, s_o]),
+            let (c1, t_o) = norm!(t, env);
+            let (c2, b_o) = norm!(b, env);
+            let (c3, s_o) = norm!(s, env);
+            if matches!(&t_o, Nat(0)) {
+                Some(b_o)
+            } else if is_add1(&t_o) {
+                let n_sub1 = sub1(&t_o);
+                let rec_sub1 = S("rec-Nat", vec![n_sub1.clone(), b_o.clone(), s_o.clone()]);
+                Some(app!(s_o, n_sub1, rec_sub1))
+            } else {
+                some_if!(c1 || c2 || c3 => S("rec-Nat", vec![t_o, b_o, s_o]))
             }
         }
         S(bf, args) => {
-            let args_o: Vec<_> = args
-                .iter()
-                .map(|arg| normalize_once(arg, env, changed))
-                .collect();
-            S(bf, args_o)
+            let results: Vec<_> = args.iter().map(|a| norm!(a, env)).collect();
+            if results.iter().any(|(c, _)| *c) {
+                Some(S(bf, results.into_iter().map(|(_, v)| v).collect()))
+            } else {
+                None
+            }
         }
-    }
-}
-
-// FunSame-β
-fn normalize_fun_beta(f: core::Expr, arg: core::Expr, changed: &mut bool) -> core::Expr {
-    use core::Expr::*;
-    if let Lambda(arg_f, body) = f {
-        *changed = true;
-        let env = Env::new().insert(
-            None,
-            (core::Expr::I("ignore"), RefCell::new(arg.clone().into())),
-        );
-        substitute_beta_arg(&body, &arg_f, &arg, &env)
-    } else {
-        App(f.into(), arg.into())
     }
 }
 
