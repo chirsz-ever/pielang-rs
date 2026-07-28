@@ -250,6 +250,7 @@ impl std::ops::Drop for IndentGuard {
 }
 
 /// 所有自由变量的 dbi 值加上一个数, depth 表示当前作用域深度
+/// TODO: 单元测试
 fn shift_dbi(e: &core::Expr, inc: usize, depth: usize) -> core::Expr {
     use core::Expr::*;
     if inc == 0 {
@@ -288,6 +289,7 @@ fn shift_dbi(e: &core::Expr, inc: usize, depth: usize) -> core::Expr {
 
 /// 执行 beta 变换 expr[e/var]，将 expr 中自由出现的 var 替换为 e，depth 表示当前作用域深度。
 /// TODO: 也许可以统一 var 和 depth 参数?
+/// TODO: 单元测试
 fn substitute(expr: &core::Expr, var: usize, e: &core::Expr, depth: usize) -> core::Expr {
     use core::Expr::*;
 
@@ -332,6 +334,7 @@ fn substitute(expr: &core::Expr, var: usize, e: &core::Expr, depth: usize) -> co
 }
 
 /// 对常用的 Argument 下 beta 变换简写
+/// TODO: 单元测试
 #[inline]
 fn substitute_beta_arg(body: &core::Expr, arg: &Argument, e: &core::Expr, env: &Env) -> core::Expr {
     tc_log!(
@@ -1085,9 +1088,14 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
                     let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
                     let id = (*id).into();
                     let (l_r, ty_r_o) = resolve_type(body, &env_ext(env, &id, &ty_a_o))?;
+                    let arg_o = if ident_occur_in(0, &ty_r_o) {
+                        Argument::Symbol(id)
+                    } else {
+                        Argument::Dummy
+                    };
                     (
                         std::cmp::max(l_a, l_r),
-                        Pi(Argument::Symbol(id), ty_a_o.into(), ty_r_o.into()),
+                        Pi(arg_o, ty_a_o.into(), ty_r_o.into()),
                     )
                 }
                 // FunF-2
@@ -1098,9 +1106,14 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
                         &PiExpr(*sp, rargs.to_vec(), body.clone()),
                         &env_ext(env, &id, &ty_a_o),
                     )?;
+                    let arg_o = if ident_occur_in(0, &ty_r_o) {
+                        Argument::Symbol(id)
+                    } else {
+                        Argument::Dummy
+                    };
                     (
                         std::cmp::max(l_a, l_r),
-                        Pi(Argument::Symbol(id), ty_a_o.into(), ty_r_o.into()),
+                        Pi(arg_o, ty_a_o.into(), ty_r_o.into()),
                     )
                 }
                 _ => unreachable!(),
@@ -1463,7 +1476,7 @@ mod unit_tests {
     fn pi_sigma_scope() {
         insta::assert_snapshot!(do_synthesize("(Pi ((A U)(D U)) (→ A D))"), @"(the (U 1) (Π ((A U)(D U)) (→ A D)))");
         insta::assert_snapshot!(do_synthesize("(Pi ((A U)(D U)) (Pair A D))"), @"(the (U 1) (Π ((A U)(D U)) (Pair A D)))");
-        insta::assert_snapshot!(do_synthesize("(Pi ((A U)(D U)) (Pi ((a A)(d D)) (→ A D)))"), @"(the (U 1) (Π ((A U)(D U)(a A)(d D)) (→ A D)))");
+        insta::assert_snapshot!(do_synthesize("(Pi ((A U)(D U)) (Pi ((a A)(d D)) (→ A D)))"), @"(the (U 1) (Π ((A U)(D U)) (→ A D A D)))");
     }
 
     #[test]
