@@ -1,6 +1,0 @@
----
-source: pielang/src/test.rs
-description: "(the 0 'a)"
-expression: output
----
-Error: 0 is not a type

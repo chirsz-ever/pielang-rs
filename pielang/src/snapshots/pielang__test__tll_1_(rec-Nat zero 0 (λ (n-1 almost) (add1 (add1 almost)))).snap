@@ -1,7 +1,0 @@
----
-source: pielang/src/test.rs
-description: (rec-Nat zero 0 (λ (n-1 almost) (add1 (add1 almost))))
-expression: output
----
-type: Nat
-expr: 0

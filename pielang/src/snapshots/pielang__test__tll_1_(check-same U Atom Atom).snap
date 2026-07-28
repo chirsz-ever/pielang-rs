@@ -1,6 +1,0 @@
----
-source: pielang/src/test.rs
-description: (check-same U Atom Atom)
-expression: output
----
-OK

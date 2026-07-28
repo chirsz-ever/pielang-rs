@@ -1,7 +1,0 @@
----
-source: pielang/src/test.rs
-description: (Pair U U)
-expression: output
----
-type: (U 1)
-expr: (Pair U U)

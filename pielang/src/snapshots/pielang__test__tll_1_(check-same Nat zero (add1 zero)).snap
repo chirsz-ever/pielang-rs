@@ -1,6 +1,0 @@
----
-source: pielang/src/test.rs
-description: (check-same Nat zero (add1 zero))
-expression: output
----
-Error: The expressions 0 and 1 are not the same Nat

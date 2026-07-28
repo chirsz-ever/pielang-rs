@@ -1,7 +1,0 @@
----
-source: pielang/src/test.rs
-description: (the (→ Absurd Nat) (λ (nope) (ind-Absurd (the Absurd nope) Nat)))
-expression: output
----
-type: (→ Absurd Nat)
-expr: (λ (nope) (ind-Absurd nope Nat))

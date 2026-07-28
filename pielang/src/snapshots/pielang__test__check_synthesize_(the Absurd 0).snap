@@ -1,6 +1,0 @@
----
-source: pielang/src/test.rs
-description: (the Absurd 0)
-expression: output
----
-Error: Expected Absurd but given Nat

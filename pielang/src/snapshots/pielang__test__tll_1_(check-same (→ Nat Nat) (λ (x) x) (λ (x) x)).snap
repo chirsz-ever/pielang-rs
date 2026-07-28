@@ -1,6 +1,0 @@
----
-source: pielang/src/test.rs
-description: (check-same (→ Nat Nat) (λ (x) x) (λ (x) x))
-expression: output
----
-OK

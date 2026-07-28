@@ -1,6 +1,0 @@
----
-source: pielang/src/test.rs
-description: (the Atom zero)
-expression: output
----
-Error: Expected Atom but given Nat

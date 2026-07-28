@@ -1347,3 +1347,149 @@ fn is_expr_check_same(c1: &core::Expr, c2: &core::Expr, ct: &core::Expr, env: &E
 pub fn default_environment() -> Env {
     Env::new()
 }
+
+#[cfg(test)]
+mod unit_tests {
+    use super::*;
+
+    thread_local! {
+        static EXPR_PARSER: crate::syntax::ExprParser = crate::syntax::ExprParser::new();
+        static STATEMENT_PARSER: crate::syntax::GlobalStatemantParser = crate::syntax::GlobalStatemantParser::new();
+    }
+
+    fn do_synthesize(s: &str) -> String {
+        let e = EXPR_PARSER.with(|p| p.parse(s)).expect("parse error");
+        match do_expression(&e) {
+            Ok(v) => v,
+            Err(e) => format!("Error: {}", e),
+        }
+    }
+
+    fn do_expression(e: &ast::Expr) -> Result<String, String> {
+        let env = default_environment();
+        let (ty_o, e_o) = synthesize(e, &env).map_err(|e| format!("{}", e))?;
+        let ty_o = normalize(&ty_o, &env);
+        let e_o = normalize(&e_o, &env);
+        Ok(format!("(the {} {})", dpp(&ty_o, &env), dpp(&e_o, &env)))
+    }
+
+    fn do_statement_0(s: &str) -> Result<String, String> {
+        let stat = STATEMENT_PARSER.with(|p| p.parse(s)).expect("parse error");
+        let env = default_environment();
+        let out = match stat {
+            ast::GlobalStatemant::Expression(e) => do_expression(&e)?,
+            ast::GlobalStatemant::CheckSame(_, ty, e1, e2) => {
+                let (_, ty_o2) = resolve_type_rule(&ty, &env).map_err(|e| format!("{}", e))?;
+                let e1_o = synthesize_with_type(&e1, &ty_o2, &env).map_err(|e| format!("{}", e))?;
+                let e2_o = synthesize_with_type(&e2, &ty_o2, &env).map_err(|e| format!("{}", e))?;
+                let e1_n = normalize(&e1_o, &env);
+                let e2_n = normalize(&e2_o, &env);
+                if is_expr_check_same(&e1_n, &e2_n, &ty_o2, &env) {
+                    String::new()
+                } else {
+                    return Err("not the same type".to_string());
+                }
+            }
+            _ => unimplemented!("only support expression and check-same statements"),
+        };
+        Ok(out)
+    }
+
+    fn do_statement(s: &str) -> String {
+        match do_statement_0(s) {
+            Ok(v) => v,
+            Err(e) => format!("Error: {}", e),
+        }
+    }
+
+    #[test]
+    fn test_expression() {
+        // Nat
+        insta::assert_snapshot!(do_synthesize("(the U Nat)"), @"(the U Nat)");
+        insta::assert_snapshot!(do_synthesize("zero"), @"(the Nat 0)");
+        insta::assert_snapshot!(do_synthesize("(add1 zero)"), @"(the Nat 1)");
+        insta::assert_snapshot!(do_synthesize("114"), @"(the Nat 114)");
+        insta::assert_snapshot!(do_synthesize("(the Nat 0)"), @"(the Nat 0)");
+        insta::assert_snapshot!(do_synthesize("(the Nat zero)"), @"(the Nat 0)");
+        insta::assert_snapshot!(do_synthesize("(the Nat (add1 zero))"), @"(the Nat 1)");
+        insta::assert_snapshot!(do_synthesize("(the Nat 114)"), @"(the Nat 114)");
+        // Atom
+        insta::assert_snapshot!(do_synthesize("(the U Atom)"), @"(the U Atom)");
+        insta::assert_snapshot!(do_synthesize("'a"), @"(the Atom 'a)");
+        insta::assert_snapshot!(do_synthesize("(quote atom)"), @"(the Atom 'atom)");
+        insta::assert_snapshot!(do_synthesize("(the Atom 'a)"), @"(the Atom 'a)");
+        // Trivial
+        insta::assert_snapshot!(do_synthesize("(the U Trivial)"), @"(the U Trivial)");
+        insta::assert_snapshot!(do_synthesize("sole"), @"(the Trivial sole)");
+        insta::assert_snapshot!(do_synthesize("(the Trivial sole)"), @"(the Trivial sole)");
+        // Absurd
+        insta::assert_snapshot!(do_synthesize("(the U Absurd)"), @"(the U Absurd)");
+        insta::assert_snapshot!(do_synthesize("(the (→ Absurd Nat) (λ (nope) (ind-Absurd nope Nat)))"), @"(the (→ Absurd Nat) (λ (nope) (ind-Absurd nope Nat)))");
+        insta::assert_snapshot!(do_synthesize("(the (→ Absurd Nat) (λ (nope) (ind-Absurd (the Absurd nope) Nat)))"), @"(the (→ Absurd Nat) (λ (nope) (ind-Absurd nope Nat)))");
+        // lambda
+        insta::assert_snapshot!(do_synthesize("(the (→ Nat Nat) (λ (x) x))"), @"(the (→ Nat Nat) (λ (x) x))");
+        insta::assert_snapshot!(do_synthesize("(the (→ Nat Nat Nat) (λ (x y) x))"), @"(the (→ Nat Nat Nat) (λ (x y) x))");
+        insta::assert_snapshot!(do_synthesize("(the (→ Nat Nat) (λ (x) (add1 x)))"), @"(the (→ Nat Nat) (λ (x) (add1 x)))");
+        insta::assert_snapshot!(do_synthesize("(the (-> Nat Nat) (lambda (x) ((the (-> Atom Nat) (lambda (y) 0)) 'a)))"), @"(the (→ Nat Nat) (λ (x) 0))");
+        insta::assert_snapshot!(do_synthesize("(the (-> Nat Nat) (lambda (x) ((the (-> Atom Nat) (lambda (y) (add1 x))) 'a)))"), @"(the (→ Nat Nat) (λ (x) (add1 x)))");
+        insta::assert_snapshot!(do_synthesize("(the (-> (-> (-> Nat Nat) Nat Nat) Nat Nat) (lambda (f x) (f (lambda (y) y) x)))"), @"(the (→ (→ (→ Nat Nat) Nat Nat) Nat Nat) (λ (f x) (f (λ (y) y) x)))");
+        insta::assert_snapshot!(do_synthesize("((the (→ Nat Nat Nat) (λ (x y) x)) 0 1)"), @"(the Nat 0)");
+        insta::assert_snapshot!(do_synthesize("((the (→ Nat Atom Nat) (λ (x y) x)) 1 'a)"), @"(the Nat 1)");
+        // Pair
+        insta::assert_snapshot!(do_synthesize("(the (Pair Nat Atom) (cons 0 'a))"), @"(the (Pair Nat Atom) (cons 0 'a))");
+        insta::assert_snapshot!(do_synthesize("(car (the (Pair Atom Nat) (cons 'a 0)))"), @"(the Atom 'a)");
+        insta::assert_snapshot!(do_synthesize("(cdr (the (Pair Atom Nat) (cons 'a 0)))"), @"(the Nat 0)");
+        insta::assert_snapshot!(do_synthesize("(the (-> (Pair Atom Nat) (Pair Atom Nat)) (λ (p) (cons (car p) (cdr p))))"), @"(the (→ (Pair Atom Nat) (Pair Atom Nat)) (λ (p) p))");
+        // Error cases
+        insta::assert_snapshot!(do_synthesize("(the Nat 'a)"), @"Error: Expected Nat but given Atom");
+        insta::assert_snapshot!(do_synthesize("(the Atom zero)"), @"Error: Expected Atom but given Nat");
+        insta::assert_snapshot!(do_synthesize("(the Trivial 0)"), @"Error: Expected Trivial but given Nat");
+        insta::assert_snapshot!(do_synthesize("(the Trivial 'a)"), @"Error: Expected Trivial but given Atom");
+        insta::assert_snapshot!(do_synthesize("(the Absurd 0)"), @"Error: Expected Absurd but given Nat");
+        insta::assert_snapshot!(do_synthesize("(the 0 'a)"), @"Error: 0 is not a type");
+        insta::assert_snapshot!(do_synthesize("(the Nat U)"), @"Error: Expected Nat but given (U 1)");
+        insta::assert_snapshot!(do_synthesize("(the U 'a)"), @"Error: Expected U but given Atom");
+    }
+
+    #[test]
+    fn pi_sigma_scope() {
+        insta::assert_snapshot!(do_synthesize("(Pi ((A U)(D U)) (→ A D))"), @"(the (U 1) (Π ((A U)(D U)) (→ A D)))");
+        insta::assert_snapshot!(do_synthesize("(Pi ((A U)(D U)) (Pair A D))"), @"(the (U 1) (Π ((A U)(D U)) (Pair A D)))");
+        insta::assert_snapshot!(do_synthesize("(Pi ((A U)(D U)) (Pi ((a A)(d D)) (→ A D)))"), @"(the (U 1) (Π ((A U)(D U)(a A)(d D)) (→ A D)))");
+    }
+
+    #[test]
+    fn tlt_tests() {
+        insta::assert_snapshot!(do_statement("(the U (Pair Atom Atom))"), @"(the U (Pair Atom Atom))");
+        insta::assert_snapshot!(do_statement("(the (Pair Atom Atom) (cons 'ratatouille 'baguette))"), @"(the (Pair Atom Atom) (cons 'ratatouille 'baguette))");
+        insta::assert_snapshot!(do_statement("(the (Pair Atom Nat) (cons 'ratatouille 0))"), @"(the (Pair Atom Nat) (cons 'ratatouille 0))");
+        insta::assert_snapshot!(do_statement("(the (Pair Atom Atom) (cons 'ratatouille 0))"), @"Error: Expected Atom but given Nat");
+        insta::assert_snapshot!(do_statement("(check-same (Pair Atom Atom) (cons 'aubergine 'courgette) (cons 'aubergine 'courgette))"), @"");
+        insta::assert_snapshot!(do_statement("(check-same (Pair Atom Atom) (cons 'aubergine 'courgette) (cons 'aubergine 'bbb))"), @"Error: not the same type");
+        insta::assert_snapshot!(do_statement("(check-same U Atom Atom)"), @"");
+        insta::assert_snapshot!(do_statement("(check-same U Atom Nat)"), @"Error: not the same type");
+        insta::assert_snapshot!(do_statement("(check-same U (Pair Atom Nat) (Pair Atom Nat))"), @"");
+        insta::assert_snapshot!(do_statement("(check-same U (Pair Nat Atom) (Pair Atom Nat))"), @"Error: not the same type");
+        insta::assert_snapshot!(do_statement("(check-same Nat 0 0)"), @"");
+        insta::assert_snapshot!(do_statement("(check-same Nat 0 1)"), @"Error: not the same type");
+        insta::assert_snapshot!(do_statement("(check-same Nat zero 0)"), @"");
+        insta::assert_snapshot!(do_statement("(check-same Nat zero (add1 zero))"), @"Error: not the same type");
+        insta::assert_snapshot!(do_statement("(check-same Nat 1 (add1 zero))"), @"");
+        insta::assert_snapshot!(do_statement("(check-same Nat (add1 zero) (add1 zero))"), @"");
+        insta::assert_snapshot!(do_statement("(check-same (→ Nat Nat) (λ (x) x) (λ (x) x))"), @"");
+        insta::assert_snapshot!(do_statement("(check-same (→ Nat Nat) (λ (x) x) (λ (y) y))"), @"");
+        insta::assert_snapshot!(do_statement("(check-same (→ Nat Nat) (λ (x) x) (λ (y) 0))"), @"Error: not the same type");
+        insta::assert_snapshot!(do_statement("(check-same (→ Nat (Pair Nat Nat)) (λ (a) (cons a a)) (λ (d) (cons d d)))"), @"");
+        insta::assert_snapshot!(do_statement("(check-same (→ Atom Nat Atom) (λ (x y) x) (λ (a b) a))"), @"");
+        insta::assert_snapshot!(do_statement("(which-Nat zero 'naught (λ (n) 'more))"), @"(the Atom 'naught)");
+        insta::assert_snapshot!(do_statement("(which-Nat 4 'naught (λ (n) 'more))"), @"(the Atom 'more)");
+        insta::assert_snapshot!(do_statement("(the (Pair U U) (cons Atom Nat))"), @"(the (Pair U U) (cons Atom Nat))");
+        insta::assert_snapshot!(do_statement("(Pair U U)"), @"(the (U 1) (Pair U U))");
+        insta::assert_snapshot!(do_statement("(Pair Atom U)"), @"(the (U 1) (Pair Atom U))");
+        insta::assert_snapshot!(do_statement("(-> U U)"), @"(the (U 1) (→ U U))");
+        insta::assert_snapshot!(do_statement("(iter-Nat 5 3 (lambda (smaller) (add1 smaller)))"), @"(the Nat 8)");
+        insta::assert_snapshot!(do_statement("(iter-Nat 0 3 (lambda (smaller) (add1 smaller)))"), @"(the Nat 3)");
+        insta::assert_snapshot!(do_statement("(rec-Nat (add1 zero) 0 (λ (n-1 almost) (add1 (add1 almost))))"), @"(the Nat 2)");
+        insta::assert_snapshot!(do_statement("(rec-Nat zero 0 (λ (n-1 almost) (add1 (add1 almost))))"), @"(the Nat 0)");
+    }
+}

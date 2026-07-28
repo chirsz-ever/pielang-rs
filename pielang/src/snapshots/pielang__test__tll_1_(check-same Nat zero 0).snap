@@ -1,6 +1,0 @@
----
-source: pielang/src/test.rs
-description: (check-same Nat zero 0)
-expression: output
----
-OK

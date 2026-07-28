@@ -1,7 +1,0 @@
----
-source: pielang/src/test.rs
-description: "(which-Nat zero 'naught (λ (n) 'more))"
-expression: output
----
-type: Atom
-expr: 'naught

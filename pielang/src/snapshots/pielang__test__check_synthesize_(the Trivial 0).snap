@@ -1,6 +1,0 @@
----
-source: pielang/src/test.rs
-description: (the Trivial 0)
-expression: output
----
-Error: Expected Trivial but given Nat

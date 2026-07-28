@@ -1,7 +1,0 @@
----
-source: pielang/src/test.rs
-description: "(the Atom 'a)"
-expression: output
----
-type: Atom
-expr: 'a

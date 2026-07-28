@@ -15,8 +15,6 @@ lalrpop_mod!(#[allow(clippy::type_complexity)] pub syntax);
 pub mod ast;
 pub mod core;
 
-#[cfg(test)]
-mod test;
 pub mod type_check;
 pub mod utils;
 

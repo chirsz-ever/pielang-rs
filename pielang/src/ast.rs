@@ -281,7 +281,6 @@ pub fn check_builtin_names<'a>(
     Ok(())
 }
 
-/// - checking the λ-expressions do not use built-in names as variable names
 /// - checking built-in names have correct number of arguments
 /// - checking no unbound variables
 pub fn check_syntax<'a>(
@@ -354,13 +353,7 @@ pub fn check_syntax<'a>(
             }
             LambdaExpr(_, args, body) => {
                 let mut new_env = env.clone();
-                for Id(sp, id) in args {
-                    if is_builtin_name(id) {
-                        return Err(LocatedError {
-                            loc: Some(*sp),
-                            erk: format!("lambda: {} is not a valid name for arguments", id),
-                        });
-                    }
+                for Id(_, id) in args {
                     new_env = new_env.insert(Some(*id), ());
                 }
                 check_syntax(body, &new_env)?;
@@ -372,29 +365,17 @@ pub fn check_syntax<'a>(
             }
             PiExpr(_, args, body) => {
                 let mut new_env = env.clone();
-                for (Id(sp, id), e_ty) in args {
-                    if is_builtin_name(id) {
-                        return Err(LocatedError {
-                            loc: Some(*sp),
-                            erk: format!("Pi: {} is not a valid name for arguments", id),
-                        });
-                    }
-                    new_env = new_env.insert(Some(*id), ());
+                for (Id(_, id), e_ty) in args {
                     check_syntax(e_ty, &new_env)?;
+                    new_env = new_env.insert(Some(*id), ());
                 }
                 check_syntax(body, &new_env)?;
             }
             SigmaExpr(_, args, body) => {
                 let mut new_env = env.clone();
-                for (Id(sp, id), e_ty) in args {
-                    if is_builtin_name(id) {
-                        return Err(LocatedError {
-                            loc: Some(*sp),
-                            erk: format!("Pi: {} is not a valid name for arguments", id),
-                        });
-                    }
-                    new_env = new_env.insert(Some(*id), ());
+                for (Id(_, id), e_ty) in args {
                     check_syntax(e_ty, &new_env)?;
+                    new_env = new_env.insert(Some(*id), ());
                 }
                 check_syntax(body, &new_env)?;
             }
@@ -415,4 +396,181 @@ pub fn to_builtin_name(x: &str) -> &'static str {
         }
     }
     panic!("{x} is not a builtin name")
+}
+
+#[cfg(test)]
+mod unit_test {
+    thread_local! {
+        static EXPR_PARSER: crate::syntax::ExprParser = crate::syntax::ExprParser::new();
+        static STATEMENT_PARSER: crate::syntax::GlobalStatemantParser = crate::syntax::GlobalStatemantParser::new();
+    }
+
+    #[test]
+    fn test_parse_statement() {
+        fn parse_stat(s: &str) -> String {
+            STATEMENT_PARSER
+                .with(|parser| parser.parse(s))
+                .map_or_else(|err| format!("Error: {}", err), |_| "OK".to_string())
+        }
+
+        // (claim varname type)
+        insta::assert_snapshot!(parse_stat("(claim x Nat)"), @"OK");
+        insta::assert_snapshot!(parse_stat("(claim x)"), @"Error: 0:9: claim: expect 2 arguments, got 1");
+        insta::assert_snapshot!(parse_stat("(claim x y z)"), @"Error: 0:13: claim: expect 2 arguments, got 3");
+        insta::assert_snapshot!(parse_stat("(claim claim Nat)"), @"OK");
+        insta::assert_snapshot!(parse_stat("(claim U Nat)"), @"Error: 7:8: claim: U is not a valid Pie name");
+        // (define varname expression)
+        insta::assert_snapshot!(parse_stat("(define x 0)"), @"OK");
+        insta::assert_snapshot!(parse_stat("(define x)"), @"Error: 0:10: define: expect 2 arguments, got 1");
+        insta::assert_snapshot!(parse_stat("(define x y z)"), @"Error: 0:14: define: expect 2 arguments, got 3");
+        insta::assert_snapshot!(parse_stat("(define define 0)"), @"OK");
+        insta::assert_snapshot!(parse_stat("(define check-same 0)"), @"OK");
+        insta::assert_snapshot!(parse_stat("(define f (λ (U) 0))"), @"Error: 15:16: U is not a valid Pie name");
+        insta::assert_snapshot!(parse_stat("(define f (λ (sole) 0))"), @"Error: 15:19: sole is not a valid Pie name");
+        insta::assert_snapshot!(parse_stat("(define f (λ (Pair) 0))"), @"Error: 15:19: Pair is not a valid Pie name");
+        insta::assert_snapshot!(parse_stat("(define f (λ (claim) 0))"), @"OK");
+        insta::assert_snapshot!(parse_stat("(define f (λ (define) 0))"), @"OK");
+        insta::assert_snapshot!(parse_stat("(define f (Pi ((U Nat)) Atom))"), @"Error: 16:17: U is not a valid Pie name");
+        insta::assert_snapshot!(parse_stat("(define f (Pi ((x Nat)(U Nat)) Atom))"), @"Error: 23:24: U is not a valid Pie name");
+        insta::assert_snapshot!(parse_stat("(define f (Sigma ((U Nat)) Atom))"), @"Error: 19:20: U is not a valid Pie name");
+        insta::assert_snapshot!(parse_stat("(define f (Sigma ((x Nat)(U Nat)) Atom))"), @"Error: 26:27: U is not a valid Pie name");
+        // (check-same type expression expression)
+        insta::assert_snapshot!(parse_stat("(check-same Nat 0 0)"), @"OK");
+        insta::assert_snapshot!(parse_stat("(check-same a b c)"), @"OK");
+        insta::assert_snapshot!(parse_stat("(check-same a)"), @"Error: 0:14: check-same: expect 3 arguments, got 1");
+        insta::assert_snapshot!(parse_stat("(check-same a b)"), @"Error: 0:16: check-same: expect 3 arguments, got 2");
+        insta::assert_snapshot!(parse_stat("(check-same a b c d)"), @"Error: 0:20: check-same: expect 3 arguments, got 4");
+    }
+
+    #[test]
+    fn test_parse_expression() {
+        fn parse_expr(s: &str) -> String {
+            EXPR_PARSER.with(|parser| parser.parse(s)).map_or_else(
+                |err| format!("Error: {}", err),
+                |expr| format!("{:?}", expr),
+            )
+        }
+
+        // Nat literals
+        insta::assert_snapshot!(parse_expr("0"), @"NatLit(Span(0, 1), 0)");
+        insta::assert_snapshot!(parse_expr("1"), @"NatLit(Span(0, 1), 1)");
+        insta::assert_snapshot!(parse_expr("9876"), @"NatLit(Span(0, 4), 9876)");
+        insta::assert_snapshot!(parse_expr("01"), @"NatLit(Span(0, 2), 1)");
+        // Atom literals
+        insta::assert_snapshot!(parse_expr("'a"), @r#"AtomLit(Span(0, 2), "a")"#);
+        insta::assert_snapshot!(parse_expr("'-a"), @r#"AtomLit(Span(0, 3), "-a")"#);
+        insta::assert_snapshot!(parse_expr("'a-"), @r#"AtomLit(Span(0, 3), "a-")"#);
+        insta::assert_snapshot!(parse_expr("'atom"), @r#"AtomLit(Span(0, 5), "atom")"#);
+        insta::assert_snapshot!(parse_expr("'this-is-a-symbol"), @r#"AtomLit(Span(0, 17), "this-is-a-symbol")"#);
+        insta::assert_snapshot!(parse_expr("'  btom"), @r#"AtomLit(Span(0, 7), "btom")"#);
+        insta::assert_snapshot!(parse_expr("(quote ctom)"), @r#"AtomLit(Span(0, 12), "ctom")"#);
+        insta::assert_snapshot!(parse_expr("(quote this-is-a-symbol)"), @r#"AtomLit(Span(0, 24), "this-is-a-symbol")"#);
+        // symbols
+        insta::assert_snapshot!(parse_expr("nil"), @r#"Ident(Span(0, 3), "nil")"#);
+        insta::assert_snapshot!(parse_expr("x"), @r#"Ident(Span(0, 1), "x")"#);
+        insta::assert_snapshot!(parse_expr("类型"), @r#"Ident(Span(0, 6), "类型")"#);
+        // S-expressions
+        insta::assert_snapshot!(parse_expr("(the (List Nat) nil)"), @r#"AppExpr(Span(0, 20), [Ident(Span(1, 4), "the"), AppExpr(Span(5, 15), [Ident(Span(6, 10), "List"), Ident(Span(11, 14), "Nat")]), Ident(Span(16, 19), "nil")])"#);
+        insta::assert_snapshot!(parse_expr("(the(List Nat)nil)"), @r#"AppExpr(Span(0, 18), [Ident(Span(1, 4), "the"), AppExpr(Span(4, 14), [Ident(Span(5, 9), "List"), Ident(Span(10, 13), "Nat")]), Ident(Span(14, 17), "nil")])"#);
+        insta::assert_snapshot!(parse_expr("(cons 2 (same 2))"), @r#"AppExpr(Span(0, 17), [Ident(Span(1, 5), "cons"), NatLit(Span(6, 7), 2), AppExpr(Span(8, 16), [Ident(Span(9, 13), "same"), NatLit(Span(14, 15), 2)])])"#);
+        insta::assert_snapshot!(parse_expr("(lambda (x) x)"), @r#"LambdaExpr(Span(0, 14), [Id(Span(9, 10), "x")], Ident(Span(12, 13), "x"))"#);
+        insta::assert_snapshot!(parse_expr("(lambda (x y) x)"), @r#"LambdaExpr(Span(0, 16), [Id(Span(9, 10), "x"), Id(Span(11, 12), "y")], Ident(Span(14, 15), "x"))"#);
+        insta::assert_snapshot!(parse_expr("(Pi ((x Nat)) Atom)"), @r#"PiExpr(Span(0, 19), [(Id(Span(6, 7), "x"), Ident(Span(8, 11), "Nat"))], Ident(Span(14, 18), "Atom"))"#);
+        insta::assert_snapshot!(parse_expr("(Pi ((x Nat)(y Atom)) Atom)"), @r#"PiExpr(Span(0, 27), [(Id(Span(6, 7), "x"), Ident(Span(8, 11), "Nat")), (Id(Span(13, 14), "y"), Ident(Span(15, 19), "Atom"))], Ident(Span(22, 26), "Atom"))"#);
+        insta::assert_snapshot!(parse_expr("(Sigma ((x Nat)) Atom)"), @r#"SigmaExpr(Span(0, 22), [(Id(Span(9, 10), "x"), Ident(Span(11, 14), "Nat"))], Ident(Span(17, 21), "Atom"))"#);
+        insta::assert_snapshot!(parse_expr("(Sigma ((x Nat)(y Atom)) Atom)"), @r#"SigmaExpr(Span(0, 30), [(Id(Span(9, 10), "x"), Ident(Span(11, 14), "Nat")), (Id(Span(16, 17), "y"), Ident(Span(18, 22), "Atom"))], Ident(Span(25, 29), "Atom"))"#);
+        insta::assert_snapshot!(parse_expr("(λ (x) (add1 x))"), @r#"LambdaExpr(Span(0, 17), [Id(Span(5, 6), "x")], AppExpr(Span(8, 16), [Ident(Span(9, 13), "add1"), Ident(Span(14, 15), "x")]))"#);
+        insta::assert_snapshot!(parse_expr(r"(the (Σ ((n Nat)) (= Nat n n)) (cons 2 (same 2)))"), @r#"AppExpr(Span(0, 50), [Ident(Span(1, 4), "the"), SigmaExpr(Span(5, 31), [(Id(Span(11, 12), "n"), Ident(Span(13, 16), "Nat"))], AppExpr(Span(19, 30), [Ident(Span(20, 21), "="), Ident(Span(22, 25), "Nat"), Ident(Span(26, 27), "n"), Ident(Span(28, 29), "n")])), AppExpr(Span(32, 49), [Ident(Span(33, 37), "cons"), NatLit(Span(38, 39), 2), AppExpr(Span(40, 48), [Ident(Span(41, 45), "same"), NatLit(Span(46, 47), 2)])])])"#);
+        // brackets and braces
+        insta::assert_snapshot!(parse_expr("[the Nat 1]"), @r#"AppExpr(Span(0, 11), [Ident(Span(1, 4), "the"), Ident(Span(5, 8), "Nat"), NatLit(Span(9, 10), 1)])"#);
+        insta::assert_snapshot!(parse_expr("{the Nat 1}"), @r#"AppExpr(Span(0, 11), [Ident(Span(1, 4), "the"), Ident(Span(5, 8), "Nat"), NatLit(Span(9, 10), 1)])"#);
+        // error cases
+        insta::assert_snapshot!(parse_expr("("), @r#"
+        Error: Unrecognized EOF found at 1
+        Expected one of IDENT, NAT_LIT, PI, SIGMA, LAMBDA, FARROW, "'", "(", "[", "quote" or "{"
+        "#);
+        insta::assert_snapshot!(parse_expr("(add1 zero))"), @"Error: Unrecognized token `)` found at 11:12");
+        insta::assert_snapshot!(parse_expr("(quote 'a)"), @r#"
+        Error: Unrecognized token `'` found at 7:8
+        Expected one of IDENT, PI, SIGMA, LAMBDA or "quote"
+        "#);
+        insta::assert_snapshot!(parse_expr("'a1"), @"Error: 1:3: Atoms can only consist of letters and hyphens");
+        insta::assert_snapshot!(parse_expr("99999999999999999999999999999"), @"Error: 0:29: parse natural number failed");
+        // FIXME: Pie should reject "-1"
+        // insta::assert_snapshot!(parse_expr("-1"), @r#"Ident(Span(0, 2), "-1")"#);
+        insta::assert_snapshot!(parse_expr("(lambda)"), @r#"
+        Error: Unrecognized token `)` found at 7:8
+        Expected one of "(", "[" or "{"
+        "#);
+        insta::assert_snapshot!(parse_expr("(lambda 0)"), @r#"
+        Error: Unrecognized token `0` found at 8:9
+        Expected one of "(", "[" or "{"
+        "#);
+        insta::assert_snapshot!(parse_expr("(lambda () 0)"), @"
+        Error: Unrecognized token `)` found at 9:10
+        Expected one of IDENT
+        ");
+        insta::assert_snapshot!(parse_expr("(lambda (zero) 0)"), @"Error: 9:13: zero is not a valid Pie name");
+        insta::assert_snapshot!(parse_expr("(Pi () Nat)"), @r#"
+        Error: Unrecognized token `)` found at 5:6
+        Expected one of "(", "[" or "{"
+        "#);
+        insta::assert_snapshot!(parse_expr("(Pi ((x)) Nat)"), @r#"
+        Error: Unrecognized token `)` found at 7:8
+        Expected one of IDENT, NAT_LIT, "'", "(", "[" or "{"
+        "#);
+        insta::assert_snapshot!(parse_expr("(Pi ((zero Nat)) Nat)"), @"Error: 6:10: zero is not a valid Pie name");
+        insta::assert_snapshot!(parse_expr("(Sigma () Nat)"), @r#"
+        Error: Unrecognized token `)` found at 8:9
+        Expected one of "(", "[" or "{"
+        "#);
+        insta::assert_snapshot!(parse_expr("(Sigma ((x)) Nat)"), @r#"
+        Error: Unrecognized token `)` found at 10:11
+        Expected one of IDENT, NAT_LIT, "'", "(", "[" or "{"
+        "#);
+        insta::assert_snapshot!(parse_expr("(Sigma ((zero Nat)) Nat)"), @"Error: 9:13: zero is not a valid Pie name");
+        insta::assert_snapshot!(parse_expr("(Sigma 0 0)"), @r#"
+        Error: Unrecognized token `0` found at 7:8
+        Expected one of "(", "[" or "{"
+        "#);
+        insta::assert_snapshot!(parse_expr("(->)"), @r#"
+        Error: Unrecognized token `)` found at 3:4
+        Expected one of IDENT, NAT_LIT, "'", "(", "[" or "{"
+        "#);
+        insta::assert_snapshot!(parse_expr("(-> Nat)"), @r#"
+        Error: Unrecognized token `)` found at 7:8
+        Expected one of IDENT, NAT_LIT, "'", "(", "[" or "{"
+        "#);
+        insta::assert_snapshot!(parse_expr("(a)"), @r#"
+        Error: Unrecognized token `)` found at 2:3
+        Expected one of IDENT, NAT_LIT, "'", "(", "[" or "{"
+        "#);
+    }
+
+    #[test]
+    fn test_check_syntax() {
+        fn parse_expression(s: &str) -> String {
+            let expr = EXPR_PARSER.with(|parser| parser.parse(s)).unwrap();
+            let env = crate::utils::StackMap::new();
+            super::check_syntax(&expr, &env)
+                .map_or_else(|err| format!("Error: {}", err), |_| "OK".to_string())
+        }
+
+        // checking built-in names have correct number of arguments
+        insta::assert_snapshot!(parse_expression("(the Nat 0)"), @"OK");
+        insta::assert_snapshot!(parse_expression("(the Nat)"), @"Error: 0:9: the need 2 arguments, got 1");
+        insta::assert_snapshot!(parse_expression("(the Nat 0 1)"), @"Error: 0:13: the need 2 arguments, got 3");
+        insta::assert_snapshot!(parse_expression("(add1 0)"), @"OK");
+        insta::assert_snapshot!(parse_expression("add1"), @"Error: 0:4: add1 need 1 arguments");
+        insta::assert_snapshot!(parse_expression("(zero 0)"), @"Error: 1:5: zero cannot be caller");
+        insta::assert_snapshot!(parse_expression("(λ (x) add1)"), @"Error: 8:12: add1 need 1 arguments");
+        // checking no unbound variables
+        insta::assert_snapshot!(parse_expression("x"), @"Error: 0:1: undefined identifier: x");
+        insta::assert_snapshot!(parse_expression("(λ (x) x)"), @"OK");
+        insta::assert_snapshot!(parse_expression("(λ (x) y)"), @"Error: 8:9: undefined identifier: y");
+        insta::assert_snapshot!(parse_expression("(λ (x) (λ (y) x))"), @"OK");
+        insta::assert_snapshot!(parse_expression("(λ (x) (λ (y) z))"), @"Error: 16:17: undefined identifier: z");
+        insta::assert_snapshot!(parse_expression("(λ (x) (λ (y) (λ (z) x)))"), @"OK");
+        insta::assert_snapshot!(parse_expression("(λ (x) (λ (y) (λ (x) x)))"), @"OK");
+    }
 }

@@ -1,6 +1,0 @@
----
-source: pielang/src/test.rs
-description: (check-same (→ Atom Nat Atom) (λ (x y) x) (λ (a b) a))
-expression: output
----
-OK

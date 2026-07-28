@@ -1,7 +1,0 @@
----
-source: pielang/src/test.rs
-description: (the U Atom)
-expression: output
----
-type: U
-expr: Atom

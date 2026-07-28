@@ -1,7 +1,0 @@
----
-source: pielang/src/test.rs
-description: (the U Nat)
-expression: output
----
-type: U
-expr: Nat

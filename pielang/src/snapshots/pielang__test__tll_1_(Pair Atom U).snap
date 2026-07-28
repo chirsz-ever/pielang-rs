@@ -1,7 +1,0 @@
----
-source: pielang/src/test.rs
-description: (Pair Atom U)
-expression: output
----
-type: (U 1)
-expr: (Pair Atom U)

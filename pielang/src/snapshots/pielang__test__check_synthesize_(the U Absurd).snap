@@ -1,7 +1,0 @@
----
-source: pielang/src/test.rs
-description: (the U Absurd)
-expression: output
----
-type: U
-expr: Absurd

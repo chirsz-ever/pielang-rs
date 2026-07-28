@@ -1,7 +1,0 @@
----
-source: pielang/src/test.rs
-description: (the Trivial sole)
-expression: output
----
-type: Trivial
-expr: sole

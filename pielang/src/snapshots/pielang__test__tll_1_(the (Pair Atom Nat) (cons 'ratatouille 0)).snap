@@ -1,7 +1,0 @@
----
-source: pielang/src/test.rs
-description: "(the (Pair Atom Nat) (cons 'ratatouille 0))"
-expression: output
----
-type: (Pair Atom Nat)
-expr: (cons 'ratatouille 0)

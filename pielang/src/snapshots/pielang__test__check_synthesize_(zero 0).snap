@@ -1,6 +1,0 @@
----
-source: pielang/src/test.rs
-description: (zero 0)
-expression: output
----
-Error: 1:5: zero cannot be caller
