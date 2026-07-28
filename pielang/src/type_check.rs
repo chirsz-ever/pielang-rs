@@ -1404,6 +1404,11 @@ mod unit_tests {
 
     #[test]
     fn test_expression() {
+        // Atom
+        insta::assert_snapshot!(do_synthesize("(the U Atom)"), @"(the U Atom)");
+        insta::assert_snapshot!(do_synthesize("'a"), @"(the Atom 'a)");
+        insta::assert_snapshot!(do_synthesize("(quote atom)"), @"(the Atom 'atom)");
+        insta::assert_snapshot!(do_synthesize("(the Atom 'a)"), @"(the Atom 'a)");
         // Nat
         insta::assert_snapshot!(do_synthesize("(the U Nat)"), @"(the U Nat)");
         insta::assert_snapshot!(do_synthesize("zero"), @"(the Nat 0)");
@@ -1413,11 +1418,13 @@ mod unit_tests {
         insta::assert_snapshot!(do_synthesize("(the Nat zero)"), @"(the Nat 0)");
         insta::assert_snapshot!(do_synthesize("(the Nat (add1 zero))"), @"(the Nat 1)");
         insta::assert_snapshot!(do_synthesize("(the Nat 114)"), @"(the Nat 114)");
-        // Atom
-        insta::assert_snapshot!(do_synthesize("(the U Atom)"), @"(the U Atom)");
-        insta::assert_snapshot!(do_synthesize("'a"), @"(the Atom 'a)");
-        insta::assert_snapshot!(do_synthesize("(quote atom)"), @"(the Atom 'atom)");
-        insta::assert_snapshot!(do_synthesize("(the Atom 'a)"), @"(the Atom 'a)");
+        insta::assert_snapshot!(do_synthesize("(which-Nat 0 'a (lambda (_) 'b))"), @"(the Atom 'a)");
+        insta::assert_snapshot!(do_synthesize("(which-Nat 1 'a (lambda (_) 'b))"), @"(the Atom 'b)");
+        insta::assert_snapshot!(do_synthesize("(iter-Nat 0 'a (lambda (_) 'b))"), @"(the Atom 'a)");
+        insta::assert_snapshot!(do_synthesize("(iter-Nat 1 'a (lambda (_) 'b))"), @"(the Atom 'b)");
+        insta::assert_snapshot!(do_synthesize("(iter-Nat 5 3 (lambda (s) (add1 s)))"), @"(the Nat 8)");
+        insta::assert_snapshot!(do_synthesize("(rec-Nat 0 'a (lambda (_ _) 'b))"), @"(the Atom 'a)");
+        insta::assert_snapshot!(do_synthesize("(rec-Nat 1 'a (lambda (_ _) 'b))"), @"(the Atom 'b)");
         // Trivial
         insta::assert_snapshot!(do_synthesize("(the U Trivial)"), @"(the U Trivial)");
         insta::assert_snapshot!(do_synthesize("sole"), @"(the Trivial sole)");
@@ -1447,6 +1454,7 @@ mod unit_tests {
         insta::assert_snapshot!(do_synthesize("(the Trivial 'a)"), @"Error: Expected Trivial but given Atom");
         insta::assert_snapshot!(do_synthesize("(the Absurd 0)"), @"Error: Expected Absurd but given Nat");
         insta::assert_snapshot!(do_synthesize("(the 0 'a)"), @"Error: 0 is not a type");
+        insta::assert_snapshot!(do_synthesize("(the sole 'a)"), @"Error: sole is not a type");
         insta::assert_snapshot!(do_synthesize("(the Nat U)"), @"Error: Expected Nat but given (U 1)");
         insta::assert_snapshot!(do_synthesize("(the U 'a)"), @"Error: Expected U but given Atom");
     }
