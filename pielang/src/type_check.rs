@@ -1500,4 +1500,11 @@ mod unit_tests {
         insta::assert_snapshot!(do_statement("(rec-Nat (add1 zero) 0 (λ (n-1 almost) (add1 (add1 almost))))"), @"(the Nat 2)");
         insta::assert_snapshot!(do_statement("(rec-Nat zero 0 (λ (n-1 almost) (add1 (add1 almost))))"), @"(the Nat 0)");
     }
+
+    #[test]
+    fn test_normalize() {
+        insta::assert_snapshot!(do_statement("(the Nat zero)"), @"(the Nat 0)");
+        insta::assert_snapshot!(do_statement("(the Nat (add1 zero))"), @"(the Nat 1)");
+        insta::assert_snapshot!(do_statement("((the (-> Nat Nat) (lambda (x) (add1 x))) 1)"), @"(the Nat 2)");
+    }
 }
