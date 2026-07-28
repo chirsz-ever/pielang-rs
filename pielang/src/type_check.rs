@@ -335,6 +335,7 @@ fn substitute(expr: &core::Expr, var: usize, e: &core::Expr, depth: usize) -> co
 
 /// 对常用的 Argument 下 beta 变换简写
 /// TODO: 单元测试
+/// TODO: 无需替换时的优化
 #[inline]
 fn substitute_beta_arg(body: &core::Expr, arg: &Argument, e: &core::Expr, env: &Env) -> core::Expr {
     tc_log!(
@@ -344,10 +345,8 @@ fn substitute_beta_arg(body: &core::Expr, arg: &Argument, e: &core::Expr, env: &
         dpp(body, env)
     );
 
-    let ret = match arg {
-        Argument::Symbol(_) => substitute(body, 0, e, 0),
-        Argument::Dummy => body.clone(),
-    };
+    // 即使 arg 在 body 中不出现，也要执行自由变量的 shift 操作
+    let ret = substitute(body, 0, e, 0);
 
     tc_log_end!("=> {}", dpp(&ret, env));
 
@@ -359,16 +358,16 @@ fn env_ext(env: &Env, name: &Ref<str>, ty: &core::Expr) -> Env {
     env.insert(name.clone().into(), (ty.clone(), Default::default()))
 }
 
-fn env_ext_arg(env: &Env, name: &Argument, ty: &core::Expr) -> Env {
-    env.insert(name.into(), (ty.clone(), Default::default()))
+fn env_ext_arg(env: &Env, arg: &Argument, ty: &core::Expr) -> Env {
+    env.insert(arg.into(), (ty.clone(), Default::default()))
 }
 
 fn env_ext_dummy(env: &Env, ty: &core::Expr) -> Env {
     env.insert(None, (ty.clone(), Default::default()))
 }
 
-fn env_ext_arg_notype(env: &Env, name: &Argument) -> Env {
-    env_ext_arg(env, name, &Default::default())
+fn env_ext_arg_notype(env: &Env, arg: &Argument) -> Env {
+    env_ext_arg(env, arg, &Default::default())
 }
 
 /// 先综合出 e 的类型，再检查其是否与 ty 相同
@@ -430,7 +429,7 @@ pub fn synthesize_with_type(
         }
         // ΣI
         (AppExpr(_, args), Sigma(arg, ty_a, ty_d)) if let Ident(_, "cons") = args[0] => {
-            let [_, a, d] = &**args else { unreachable!() };
+            no_else! { let [_, a, d] = &**args }
             let a_o = synthesize_with_type(a, ty_a, env)?;
             let d_o = synthesize_with_type(d, &substitute_beta_arg(ty_d, arg, &a_o, env), env)?;
             S("cons", vec![a_o, d_o])
@@ -532,6 +531,23 @@ fn sub1(e: &core::Expr) -> core::Expr {
     }
 }
 
+// fn ppenv(env: &Env) -> String {
+//     let mut s = String::new();
+//     s.push_str("[");
+//     for (i, (name, (_ty, _))) in env.iter().enumerate() {
+//         let name_str = name.as_deref().unwrap_or("_");
+//         s.push_str(&format!(
+//             "{}",
+//             name_str,
+//         ));
+//         if i + 1 < env.iter().count() {
+//             s.push_str(" ");
+//         }
+//     }
+//     s.push_str("]");
+//     s
+// }
+
 /// 对表达式 `e` 进行类型检查，返回检查结果。
 /// 第七种 Judgement，见 Figure B.1。
 pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), Error> {
@@ -559,8 +575,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
             for (i, (name, (ty, _))) in env.iter().enumerate() {
                 if name.as_deref().is_some_and(|n| *n == **id) {
                     // convert to de Bruijn index
-                    // 在 normalize 中会将 def 替换为其定义
-                    break 'x (ty.clone(), Identifier((*id).into(), i));
+                    break 'x (shift_dbi(ty, i + 1, 0), Identifier((*id).into(), i));
                 }
             }
             unreachable!("Identifier {} not found in env", id)
