@@ -20,5 +20,5 @@ log = { workspace = true }
 regex = { workspace = true }
 
 [dev-dependencies]
-insta = { version = "1.48.0", features = ["yaml"] }
+insta = { version = "1.48.0", features = ["yaml", "glob"] }
 anyhow = { workspace = true }
