@@ -1,0 +1,6 @@
+---
+source: pielang/tests/test.rs
+input_file: pielang/tests/snapshots/ch3-zerop.pie
+---
+(the Atom 't)
+(the Atom 'nil)

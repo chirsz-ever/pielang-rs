@@ -1,0 +1,85 @@
+#lang pie
+
+(claim kar
+  (→ (Pair Nat Nat)
+    Nat))
+(claim kdr
+  (→ (Pair Nat Nat)
+    Nat))
+(claim swap
+  (→ (Pair Nat Atom)
+    (Pair Atom Nat)))
+
+(claim flip
+  (Π ((A U)
+      (D U))
+    (→ (Pair A D)
+      (Pair D A))))
+(define flip
+  (λ (A D)
+    (λ (p)
+      (cons (cdr p) (car p)))))
+
+(flip Nat Atom) ; (λ (p) (cons (cdr p) (car p)))
+
+((flip Nat Atom)
+ (cons 17 'apple)) ; (cons 'apple 17)
+
+(claim elim-Pair
+  (Π ((A U)
+      (D U)
+      (X U))
+    (→ (Pair A D)
+       (→ A D
+         X)
+      X)))
+(define elim-Pair
+  (λ (A D X)
+    (λ (p f)
+      (f (car p) (cdr p)))))
+
+(define kar
+  (λ (p)
+    (elim-Pair
+      Nat Nat
+      Nat
+      p
+      (λ (a d)
+        a))))
+
+(define kdr
+  (λ (p)
+    (elim-Pair
+      Nat Nat
+      Nat
+      p
+      (λ (a d)
+        d))))
+
+(define swap
+  (λ (p)
+    (elim-Pair
+      Nat Atom
+      (Pair Atom Nat)
+      p
+      (λ (a d)
+        (cons d a)))))
+
+(claim twin
+  (Π ((Y U))
+    (→ Y
+      (Pair Y Y))))
+(define twin
+  (λ (Y)
+    (λ (x)
+      (cons x x))))
+
+(twin Atom) ; (the (→ Atom (Pair Atom Atom)) (λ (x) (cons x x)))
+
+(claim twin-Atom
+  (→ Atom
+    (Pair Atom Atom)))
+(define twin-Atom
+  (twin Atom))
+
+(check-same (Pair Atom Atom) (twin-Atom 'cherry-pie) ((twin Atom) 'cherry-pie))

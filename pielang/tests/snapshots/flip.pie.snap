@@ -1,6 +1,0 @@
----
-source: pielang/tests/test.rs
-input_file: pielang/tests/snapshots/flip.pie
----
-(the (Pair Nat Atom) (cons 0 'a))
-(the (Pair Nat Atom) (cons 1 'b))

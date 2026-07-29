@@ -1,0 +1,6 @@
+---
+source: pielang/tests/test.rs
+input_file: pielang/tests/snapshots/ch3-gauss.pie
+---
+(the Nat 1)
+(the Nat 55)

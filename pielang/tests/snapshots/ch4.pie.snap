@@ -1,0 +1,7 @@
+---
+source: pielang/tests/test.rs
+input_file: pielang/tests/snapshots/ch4.pie
+---
+(the (→ (Pair Nat Atom) (Pair Atom Nat)) (λ (p) (cons (cdr p) (car p))))
+(the (Pair Atom Nat) (cons 'apple 17))
+(the (→ Atom (Pair Atom Atom)) (λ (x) (cons x x)))

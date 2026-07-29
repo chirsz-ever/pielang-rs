@@ -1,0 +1,31 @@
+#lang pie
+
+(claim step-+
+  (→ Nat Nat))
+(define step-+
+  (λ (+n-1)
+    (add1 +n-1)))
+
+(claim + (→ Nat Nat Nat))
+(define +
+  (λ (n j)
+    (iter-Nat n
+      j
+      step-+)))
+
+(claim step-gauss
+  (→ Nat Nat
+    Nat))
+(define step-gauss
+  (λ (n-1 gauss_n-1)
+    (+ (add1 n-1) gauss_n-1)))
+
+(claim gauss (→ Nat Nat))
+(define gauss
+  (λ (n)
+    (rec-Nat n
+      0
+      step-gauss)))
+
+(gauss (add1 zero)) ; 1
+(gauss 10) ; 55

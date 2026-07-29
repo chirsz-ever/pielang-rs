@@ -1,0 +1,6 @@
+---
+source: pielang/tests/test.rs
+input_file: pielang/tests/snapshots/ch2-pear.pie
+---
+(the (Pair Nat Nat) (cons 17 3))
+(the (Pair Nat Nat) (cons 10 14))

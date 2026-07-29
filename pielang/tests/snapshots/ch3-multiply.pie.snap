@@ -1,0 +1,5 @@
+---
+source: pielang/tests/test.rs
+input_file: pielang/tests/snapshots/ch3-multiply.pie
+---
+(the Nat 58)

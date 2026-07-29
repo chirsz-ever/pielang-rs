@@ -1,0 +1,18 @@
+#lang pie
+
+(claim step-zerop
+  (→ Nat Atom Atom))
+(define step-zerop
+  (λ (n-1 zeropn-1)
+    'nil))
+
+(claim zerop
+  (→ Nat Atom))
+(define zerop
+  (λ (n)
+    (rec-Nat n
+      't
+      step-zerop)))
+
+(zerop 0) ; 't
+(zerop 37) ; 'nil
