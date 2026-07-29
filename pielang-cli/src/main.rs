@@ -1,6 +1,7 @@
 use anyhow::bail;
 use pielang::ast::{Id, check_syntax};
 use pielang::core::DBIPPrint as dpp;
+use pielang::core::Expr::Nat;
 use pielang::type_check as tc;
 use rustyline::KeyEvent;
 use std::fs::File;
@@ -93,8 +94,8 @@ fn process_expression(
         e_o = tc::normalize(&e_s, env);
     }
 
-    match ty_o {
-        pielang::core::Expr::S("U", _) => {
+    match &ty_o {
+        pielang::core::Expr::S("U", args) if !matches!(args.as_slice(), [Nat(0)]) => {
             // > When an expression is a type, but does not have a type, Pie replies with just its normal form.
             // > -- Recess - Forkful of Pie
             println!("{}", dpp(&e_o, env));

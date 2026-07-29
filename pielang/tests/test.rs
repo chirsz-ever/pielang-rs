@@ -2,6 +2,8 @@ use std::fmt::Write;
 
 use pielang::ast::{GlobalStatemant, Id, check_syntax};
 use pielang::core::DBIPPrint as dpp;
+use pielang::core::Expr::Nat;
+use pielang::core::Expr::S;
 use pielang::type_check as tc;
 
 type Env = tc::Env;
@@ -39,7 +41,7 @@ fn interpret_to_string(source: &str) -> Result<String, anyhow::Error> {
                 let e_o = tc::normalize(&e_s, &env);
 
                 match ty_o {
-                    pielang::core::Expr::S("U", _) => {
+                    S("U", args) if !matches!(args.as_slice(), [Nat(0)]) => {
                         writeln!(output, "{}", dpp(&e_o, &env)).unwrap();
                     }
                     _ => {
