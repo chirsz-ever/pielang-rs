@@ -1532,6 +1532,11 @@ mod unit_tests {
         insta::assert_snapshot!(do_statement("(iter-Nat 0 3 (lambda (smaller) (add1 smaller)))"), @"(the Nat 3)");
         insta::assert_snapshot!(do_statement("(rec-Nat (add1 zero) 0 (λ (n-1 almost) (add1 (add1 almost))))"), @"(the Nat 2)");
         insta::assert_snapshot!(do_statement("(rec-Nat zero 0 (λ (n-1 almost) (add1 (add1 almost))))"), @"(the Nat 0)");
+        insta::assert_snapshot!(do_statement("(List Atom)"), @"(the U (List Atom))");
+        insta::assert_snapshot!(do_statement("(the (List Atom) nil)"), @"(the (List Atom) nil)");
+        insta::assert_snapshot!(do_statement("(the (List Atom) nil)"), @"(the (List Atom) nil)");
+        insta::assert_snapshot!(do_statement("(the (List (List Atom)) nil)"), @"(the (List (List Atom)) nil)");
+        insta::assert_snapshot!(do_statement("(the (List 'potato) nil)"), @"");
     }
 
     #[test]
