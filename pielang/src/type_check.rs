@@ -151,28 +151,28 @@ macro_rules! no_else {
 
 macro_rules! arrow {
     ($ty_a:expr, $ty_r:expr $(,)?) => {
-        core::Expr::Pi(Argument::Dummy, Ref::new($ty_a), Ref::new($ty_r))
+        core::Expr::Pi(Argument::Dummy, Ref::new($ty_a), Ref::new(shift_dbi(&$ty_r, 1, 0)))
     };
     (ref $ty_a:expr, $ty_r:expr $(,)?) => {
-        core::Expr::Pi(Argument::Dummy, Ref::clone(&$ty_a), Ref::new($ty_r))
+        core::Expr::Pi(Argument::Dummy, Ref::clone(&$ty_a), Ref::new(shift_dbi(&$ty_r, 1, 0)))
     };
     ($ty_a:expr, ref $ty_r:expr $(,)?) => {
-        core::Expr::Pi(Argument::Dummy, Ref::new($ty_a), Ref::clone(&$ty_r))
+        core::Expr::Pi(Argument::Dummy, Ref::new($ty_a), Ref::new(shift_dbi(&$ty_r, 1, 0)))
     };
     (ref $ty_a:expr, ref $ty_r:expr $(,)?) => {
-        core::Expr::Pi(Argument::Dummy, Ref::clone(&$ty_a), Ref::clone(&$ty_r))
+        core::Expr::Pi(Argument::Dummy, Ref::clone(&$ty_a), Ref::new(shift_dbi(&$ty_r, 1, 0)))
     };
     ($ty_a:expr, $($e:tt)+) => {
         core::Expr::Pi(
             Argument::Dummy,
             Ref::new($ty_a),
-            Ref::new(arrow!($($e)+)))
+            Ref::new(shift_dbi(&arrow!($($e)+), 1, 0)))
     };
     (ref $ty_a:expr, $($e:tt)+) => {
         core::Expr::Pi(
             Argument::Dummy,
             Ref::clone(&$ty_a),
-            Ref::new(arrow!($($e)+)))
+            Ref::new(shift_dbi(&arrow!($($e)+), 1, 0)))
     };
 }
 
@@ -677,7 +677,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                 }
                 // NatE-2
                 [Ident(_, "iter-Nat"), t, b, s] => {
-                    let t_o = synthesize_with_type(t, &B!("Nat"), env)?;
+                    let t_o = synthesize_with_type(t, &I("Nat"), env)?;
                     let (ty_b, b_o) = synthesize(b, env)?;
                     let ty_b = Ref::new(ty_b);
                     let ty_s = arrow!(ref ty_b, ref ty_b);
@@ -687,7 +687,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                 }
                 // NatE-3
                 [Ident(_, "rec-Nat"), t, b, s] => {
-                    let t_o = synthesize_with_type(t, &B!("Nat"), env)?;
+                    let t_o = synthesize_with_type(t, &I("Nat"), env)?;
                     let (ty_b, b_o) = synthesize(b, env)?;
                     let ty_b = Ref::new(ty_b);
                     let ty_s = arrow!(I("Nat"), ref ty_b, ref ty_b);
@@ -1074,6 +1074,21 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
                 some_if!(c1 || c2 || c3 => S("rec-Nat", vec![t_o, b_o, s_o]))
             }
         }
+        S("rec-List", args) => {
+            no_else!( let [t, b, s] = &args[..] );
+            let (c1, t_o) = norm!(t, env);
+            let (c2, b_o) = norm!(b, env);
+            let (c3, s_o) = norm!(s, env);
+            if let I("nil") = &t_o {
+                Some(b_o)
+            } else if let S("::", cons_args) = &t_o {
+                no_else!( let [e, es] = &cons_args[..] );
+                let rec_es = S("rec-List", vec![es.clone(), b_o, s_o.clone()]);
+                Some(app!(s_o, e.clone(), es.clone(), rec_es))
+            } else {
+                some_if!(c1 || c2 || c3 => S("rec-List", vec![t_o, b_o, s_o]))
+            }
+        }
         S(bf, args) => {
             let results: Vec<_> = args.iter().map(|a| norm!(a, env)).collect();
             if results.iter().any(|(c, _)| *c) {
@@ -1141,7 +1156,7 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
                 [ty_a, ty_r] => {
                     let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
                     let (l_r, ty_r_o) = resolve_type(ty_r, &env_ext_dummy(env, &ty_a_o))?;
-                    (std::cmp::max(l_a, l_r), arrow!(ty_a_o, ty_r_o))
+                    (std::cmp::max(l_a, l_r), Pi(Argument::Dummy, Ref::new(ty_a_o), Ref::new(ty_r_o)))
                 }
                 // FunF->2, (→ A B ... R) -> (Π ((_ A)) (→ B ... R))
                 [ty_a, rargs @ ..] => {
@@ -1151,7 +1166,7 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
                         &ArrowExpr(*sp, rargs.to_vec()),
                         &env_ext_dummy(env, &ty_a_o),
                     )?;
-                    (std::cmp::max(l_a, l_r), arrow!(ty_a_o, ty_r_o))
+                    (std::cmp::max(l_a, l_r), Pi(Argument::Dummy, Ref::new(ty_a_o), Ref::new(ty_r_o)))
                 }
                 _ => unreachable!(),
             }
