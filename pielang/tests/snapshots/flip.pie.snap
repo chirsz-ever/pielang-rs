@@ -1,6 +1,5 @@
 ---
 source: pielang/tests/test.rs
-expression: output
 input_file: pielang/tests/snapshots/flip.pie
 ---
 (the (Pair Nat Atom) (cons 0 'a))

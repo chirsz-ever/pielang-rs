@@ -76,6 +76,7 @@ fn test_pie_snapshots() {
         insta::with_settings!({
             prepend_module_to_snapshot => false,
             snapshot_suffix => "",
+            omit_expression => true,
         }, {
             insta::assert_snapshot!(file_name, output);
         });
