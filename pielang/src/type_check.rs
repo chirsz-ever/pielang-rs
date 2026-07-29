@@ -1536,7 +1536,7 @@ mod unit_tests {
         insta::assert_snapshot!(do_statement("(the (List Atom) nil)"), @"(the (List Atom) nil)");
         insta::assert_snapshot!(do_statement("(the (List Atom) nil)"), @"(the (List Atom) nil)");
         insta::assert_snapshot!(do_statement("(the (List (List Atom)) nil)"), @"(the (List (List Atom)) nil)");
-        insta::assert_snapshot!(do_statement("(the (List 'potato) nil)"), @"");
+        insta::assert_snapshot!(do_statement("(the (List 'potato) nil)"), @"Error: 'potato is not a type");
     }
 
     #[test]
