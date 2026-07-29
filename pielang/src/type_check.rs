@@ -1266,6 +1266,11 @@ fn is_type_check_same(ty1: &core::Expr, ty2: &core::Expr, env: &Env) -> bool {
             is_type_check_same(ty_a1, ty_a2, env)
                 && is_type_check_same(ty_r1, ty_r2, &env_ext_arg(env, a1, ty_a1))
         }
+        // FunSame-Π
+        (Pi(a1, ty_a1, ty_r1), Pi(_a2, ty_a2, ty_r2)) => {
+            is_type_check_same(ty_a1, ty_a2, env)
+                && is_type_check_same(ty_r1, ty_r2, &env_ext_arg(env, a1, ty_a1))
+        }
         (S(f1, args1), S(f2, args2)) => match (&**f1, &**args1, &**f2, &**args2) {
             ("List", [ty_e1], "List", [ty_e2]) => is_type_check_same(ty_e1, ty_e2, env),
             ("Vec", [ty_e1, len1], "Vec", [ty_e2, len2]) => {
