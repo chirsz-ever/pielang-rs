@@ -17,3 +17,143 @@
       (:: 'water
         (:: 'sourdough
           (:: 'salt nil))))))
+
+(claim toppings
+  (List Atom))
+(define toppings
+  (:: 'potato
+    (:: 'butter nil)))
+(claim condiments
+  (List Atom))
+(define condiments
+  (:: 'chives
+    (:: 'mayonnaise nil)))
+
+(claim length
+  (Π ((E U))
+    (→ (List E)
+      Nat)))
+(claim step-length
+  (Π ((E U))
+    (→ E (List E) Nat
+      Nat)))
+(define step-length
+  (λ (E)
+    (λ (e es lengthes)
+      (add1 lengthes))))
+(define length
+  (λ (E)
+    (λ (es)
+      (rec-List es
+        0
+        (step-length E)))))
+
+(length Atom) ; (the (-> (List Atom) Nat) ...)
+(length Atom expectations) ; 5
+(length Atom toppings) ; 2
+
+(claim length-Atom
+  (→ (List Atom)
+    Nat))
+(define length-Atom
+  (length Atom))
+
+(length-Atom expectations) ; 5
+(length-Atom toppings) ; 2
+
+(claim append
+  (Π ((E U))
+    (→ (List E) (List E)
+      (List E))))
+(claim step-append
+  (Π ((E U))
+    (→ E (List E) (List E)
+      (List E))))
+(define step-append
+  (λ (E)
+    (λ (e es append_es)
+      (:: e append_es))))
+(define append
+  (λ (E)
+    (λ (start end)
+      (rec-List start
+        end
+        (step-append E)))))
+
+(append Atom toppings condiments) ; (:: 'potato (:: 'butter (:: 'chives (:: 'mayonnaise nil))))
+
+(length Atom (append Atom expectations rugbrød)) ; 10
+
+(claim snoc
+  (Π ((E U))
+    (→ (List E) E
+      (List E))))
+(define snoc
+  (λ (E)
+    (λ (start e)
+      (rec-List start
+        (:: e nil)
+        (step-append E)))))
+
+(snoc Atom toppings 'rye-bread) ; (:: 'potato (:: 'butter (:: 'rye-bread nil)))
+
+(claim concat
+  (Π ((E U))
+    (→ (List E) (List E)
+      (List E))))
+(claim step-concat
+  (Π ((E U))
+    (→ E (List E) (List E)
+      (List E))))
+(define step-concat
+  (λ (E)
+    (λ (e es concates)
+      (snoc E concates e))))
+(define concat
+  (λ (E)
+    (λ (start end)
+      (rec-List end
+        start
+        (step-concat E)))))
+
+; bug, see https://thelittletyper.com/errata.html
+(concat Atom toppings condiments) ; (:: 'potato (:: 'butter (:: 'mayonnaise (:: 'chives nil))))
+
+(claim reverse
+  (Π ((E U))
+    (→ (List E)
+      (List E))))
+(claim step-reverse
+  (Π ((E U))
+    (→ E (List E) (List E)
+      (List E))))
+(define step-reverse
+  (λ (E)
+    (λ (e es reversees)
+      (snoc E reversees e))))
+(define reverse
+  (λ (E)
+    (λ (es)
+      (rec-List es
+        (the (List E) nil)
+        (step-reverse E)))))
+
+(reverse Atom expectations) ; (:: 'slept (:: 'understood (:: 'tried-cleaning (:: 'eaten (:: 'cooked nil)))))
+
+(claim kartoffelmad
+  (List Atom))
+(define kartoffelmad
+  (append Atom
+    (concat Atom
+      condiments toppings)
+    (reverse Atom
+      (:: 'plate
+        (:: 'rye-bread nil)))))
+
+kartoffelmad
+; (:: 'chives
+;   (:: 'mayonnaise
+;     (:: 'butter
+;       (:: 'potato
+;         (:: 'rye-bread
+;           (:: 'plate nil))))))

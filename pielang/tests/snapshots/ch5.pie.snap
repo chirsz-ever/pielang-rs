@@ -2,4 +2,14 @@
 source: pielang/tests/test.rs
 input_file: pielang/tests/snapshots/ch5.pie
 ---
-
+(the (→ (List Atom) Nat) (λ (es) (rec-List es 0 (λ (e es lengthes) (add1 lengthes)))))
+(the Nat 5)
+(the Nat 2)
+(the Nat 5)
+(the Nat 2)
+(the (List Atom) (:: 'potato (:: 'butter (:: 'chives (:: 'mayonnaise nil)))))
+(the Nat 10)
+(the (List Atom) (:: 'potato (:: 'butter (:: 'rye-bread nil))))
+(the (List Atom) (:: 'potato (:: 'butter (:: 'mayonnaise (:: 'chives nil)))))
+(the (List Atom) (:: 'slept (:: 'understood (:: 'tried-cleaning (:: 'eaten (:: 'cooked nil))))))
+(the (List Atom) (:: 'chives (:: 'mayonnaise (:: 'butter (:: 'potato (:: 'rye-bread (:: 'plate nil)))))))
