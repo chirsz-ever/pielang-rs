@@ -1224,7 +1224,7 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
                     }
                 }
                 [Ident(_, "add1"), ..] => throw!(ErrorKind::NotType("(add1 ...)".into())),
-                _ => unreachable!(),
+                _ => return Err(ErrorKind::NotType(format!("{}", e)).into())
             }
         }
         // 内建单例对象
@@ -1552,6 +1552,10 @@ mod unit_tests {
         insta::assert_snapshot!(do_statement("(the (List Atom) nil)"), @"(the (List Atom) nil)");
         insta::assert_snapshot!(do_statement("(the (List (List Atom)) nil)"), @"(the (List (List Atom)) nil)");
         insta::assert_snapshot!(do_statement("(the (List 'potato) nil)"), @"Error: 'potato is not a type");
+        insta::assert_snapshot!(do_statement("(Vec Atom 3)"), @"(the U (Vec Atom 3))");
+        insta::assert_snapshot!(do_statement("(the (Vec Atom 0) vecnil)"), @"(the (Vec Atom 0) vecnil)");
+        insta::assert_snapshot!(do_statement("(the (Vec Atom 1) (vec:: 'oyster vecnil))"), @"(the (Vec Atom 1) (vec:: 'oyster vecnil))");
+        insta::assert_snapshot!(do_statement("(the (Vec Atom 2) (vec:: 'oyster vecnil))"), @"Error: Expected (Vec Atom 1) but given vecnil");
     }
 
     #[test]
