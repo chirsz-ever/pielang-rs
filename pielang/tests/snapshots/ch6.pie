@@ -1,0 +1,67 @@
+#lang pie
+
+(claim step-+
+  (→ Nat Nat))
+(define step-+
+  (λ (+n-1)
+    (add1 +n-1)))
+
+(claim + (→ Nat Nat Nat))
+(define +
+  (λ (n j)
+    (iter-Nat n
+      j
+      step-+)))
+
+(Vec
+  (cdr
+    (the (Pair Atom U) (cons 'pie
+      (List (cdr (the (Pair U U) (cons Atom Nat)))))))
+  (+ 2 1))
+
+(claim first-of-one
+  (Π ((E 
+U
+))
+    (→ (Vec E 1)
+      E)))
+(define first-of-one
+  (λ (E)
+    (λ (es)
+      (head es))))
+
+(first-of-one Atom
+  (vec:: 'shiitake vecnil)) ; => 'shiitake
+
+(claim first
+  (Π ((E U)
+      (l Nat))
+    (→ (Vec E (add1 l))
+      E)))
+
+(define first
+  (λ (E l)
+    (λ (es)
+      (head es))))
+
+(first Atom 3
+  (vec:: 'chicken-of-the-woods
+    (vec:: 'chantrelle
+      (vec:: 'lions-mane
+        (vec:: 'puffball vecnil))))) ; => 'chicken-of-the-woods
+
+(claim rest
+  (Π ((E U)
+      (l Nat))
+    (→ (Vec E (add1 l))
+      (Vec E l))))
+(define rest
+  (λ (E l)
+    (λ (es)
+      (tail es))))
+
+(rest Atom 3
+  (vec:: 'chicken-of-the-woods
+    (vec:: 'chantrelle
+      (vec:: 'lions-mane
+        (vec:: 'puffball vecnil))))) ; => (vec:: 'chantrelle (vec:: 'lions-mane (vec:: 'puffball vecnil)))

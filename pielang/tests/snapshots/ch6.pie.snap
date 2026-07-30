@@ -1,0 +1,8 @@
+---
+source: pielang/tests/test.rs
+input_file: pielang/tests/snapshots/ch6.pie
+---
+(the U (Vec (List Nat) 3))
+(the Atom 'shiitake)
+(the Atom 'chicken-of-the-woods)
+(the (Vec Atom 3) (vec:: 'chantrelle (vec:: 'lions-mane (vec:: 'puffball vecnil))))
