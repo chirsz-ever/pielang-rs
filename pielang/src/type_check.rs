@@ -1089,6 +1089,26 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
                 some_if!(c1 || c2 || c3 => S("rec-List", vec![t_o, b_o, s_o]))
             }
         }
+        S("head", args) => {
+            no_else!( let [v] = &args[..] );
+            let (c, v_o) = norm!(v, env);
+            if let S("vec::", vec_args) = &v_o {
+                no_else!( let [e, _es] = &vec_args[..] );
+                Some(e.clone())
+            } else {
+                some_if!(c => S("head", vec![v_o]))
+            }
+        }
+        S("tail", args) => {
+            no_else!( let [v] = &args[..] );
+            let (c, v_o) = norm!(v, env);
+            if let S("vec::", vec_args) = &v_o {
+                no_else!( let [_e, es] = &vec_args[..] );
+                Some(es.clone())
+            } else {
+                some_if!(c => S("tail", vec![v_o]))
+            }
+        }
         S(bf, args) => {
             let results: Vec<_> = args.iter().map(|a| norm!(a, env)).collect();
             if results.iter().any(|(c, _)| *c) {
@@ -1602,6 +1622,12 @@ mod unit_tests {
         insta::assert_snapshot!(do_statement("(the (Vec Atom 0) vecnil)"), @"(the (Vec Atom 0) vecnil)");
         insta::assert_snapshot!(do_statement("(the (Vec Atom 1) (vec:: 'oyster vecnil))"), @"(the (Vec Atom 1) (vec:: 'oyster vecnil))");
         insta::assert_snapshot!(do_statement("(the (Vec Atom 2) (vec:: 'oyster vecnil))"), @"Error: Expected (Vec Atom 1) but given vecnil");
+        insta::assert_snapshot!(do_statement("(the (Vec Atom 3) (vec:: 'crimini (vec:: 'shiitake vecnil)))"), @"Error: Expected (Vec Atom 1) but given vecnil");
+        insta::assert_snapshot!(do_statement("(head (the (Vec Atom 2) (vec:: 'a (vec:: 'b vecnil))))"), @"(the Atom 'a)");
+        insta::assert_snapshot!(do_statement("(head (the (Vec Atom 0) vecnil))"), @"Error: Expected Vec longer than 1 but given (the (Vec Atom 0) vecnil)");
+        insta::assert_snapshot!(do_statement("(tail (the (Vec Atom 2) (vec:: 'a (vec:: 'b vecnil))))"), @"(the (Vec Atom 1) (vec:: 'b vecnil))");
+        insta::assert_snapshot!(do_statement("(tail (the (Vec Atom 1) (vec:: 'a vecnil)))"), @"(the (Vec Atom 0) vecnil)");
+        insta::assert_snapshot!(do_statement("(tail (the (Vec Atom 0) vecnil))"), @"Error: Expected Vec longer than 1 but given (the (Vec Atom 0) vecnil)");
     }
 
     #[test]
