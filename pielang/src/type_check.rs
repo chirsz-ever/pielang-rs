@@ -1156,7 +1156,10 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
                 [ty_a, ty_r] => {
                     let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
                     let (l_r, ty_r_o) = resolve_type(ty_r, &env_ext_dummy(env, &ty_a_o))?;
-                    (std::cmp::max(l_a, l_r), Pi(Argument::Dummy, Ref::new(ty_a_o), Ref::new(ty_r_o)))
+                    (
+                        std::cmp::max(l_a, l_r),
+                        Pi(Argument::Dummy, Ref::new(ty_a_o), Ref::new(ty_r_o)),
+                    )
                 }
                 // FunF->2, (→ A B ... R) -> (Π ((_ A)) (→ B ... R))
                 [ty_a, rargs @ ..] => {
@@ -1166,7 +1169,10 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
                         &ArrowExpr(*sp, rargs.to_vec()),
                         &env_ext_dummy(env, &ty_a_o),
                     )?;
-                    (std::cmp::max(l_a, l_r), Pi(Argument::Dummy, Ref::new(ty_a_o), Ref::new(ty_r_o)))
+                    (
+                        std::cmp::max(l_a, l_r),
+                        Pi(Argument::Dummy, Ref::new(ty_a_o), Ref::new(ty_r_o)),
+                    )
                 }
                 _ => unreachable!(),
             }
@@ -1223,8 +1229,25 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
                         }),
                     }
                 }
-                [Ident(_, "add1"), ..] => throw!(ErrorKind::NotType("(add1 ...)".into())),
-                _ => return Err(ErrorKind::NotType(format!("{}", e)).into())
+                [Ident(_, elm), ..] if PIE_ELIMINATORS.contains(elm) => {
+                    let (ty_o, e_o) = synthesize(e, env)?;
+                    match &ty_o {
+                        S("U", args) => {
+                            no_else!( let [arg] = &args[..] );
+                            if let Nat(n) = arg {
+                                (*n, e_o)
+                            } else {
+                                // FIXME: better error message
+                                throw!(ErrorKind::NotType(format!("{}", e)));
+                            }
+                        }
+                        _ => throw!(ErrorKind::NotType(format!("{}", e))),
+                    }
+                }
+                [Ident(_, ctr), ..] if PIE_CONSTRUCTORS.contains(ctr) => {
+                    throw!(ErrorKind::NotType(format!("{}", e)))
+                }
+                _ => return Err(ErrorKind::NotType(format!("{}", e)).into()),
             }
         }
         // 内建单例对象
@@ -1242,6 +1265,29 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
     tc_log_end!("=> (the (U {}) {})", ret.0, dpp(&ret.1, env));
     Ok(ret)
 }
+
+const PIE_CONSTRUCTORS: &[&str] = &["add1", "::", "vec::", "same", "left", "right"];
+
+const PIE_ELIMINATORS: &[&str] = &[
+    "car",
+    "cdr",
+    "which-Nat",
+    "iter-Nat",
+    "rec-Nat",
+    "ind-Nat",
+    "rec-List",
+    "ind-List",
+    "head",
+    "tail",
+    "ind-Vec",
+    "symm",
+    "cong",
+    "replace",
+    "trans",
+    "ind-=",
+    "ind-Either",
+    "ind-Absurd",
+];
 
 // 将 resolve_type 的返回值包装为 (U(n), t_o)
 #[inline]
