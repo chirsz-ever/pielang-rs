@@ -47,23 +47,48 @@ ARGS:
 - [x] Atoms
   - [x] `Atom`
   - [x] `quote`, atom literals
-- [ ] Natural Numbers
+- [x] Natural Numbers
   - [x] `Nat`
   - [x] `zero`, `(add1 n)`, natural literals
-  - [ ] `which-Nat`
-  - [ ] `iter-Nat`
-  - [ ] `rec-Nat`
-  - [ ] `ind-Nat`
-- [ ] Pairs
-- [ ] Functions
+  - [x] `which-Nat`
+  - [x] `iter-Nat`
+  - [x] `rec-Nat`
+  - [x] `ind-Nat`
+- [x] Pairs
+  - [x] `Pair`
+  - [x] `cons`
+  - [x] `car`, `cdr`
+  - [ ] `Σ`
+- [x] Functions
+  - [x] `->`
+  - [x] `λ`
+  - [x] application
+  - [x] `Π`
 - [ ] Lists
+  - [x] `List`
+  - [x] `nil`, `::`
+  - [x] `rec-List`
+  - [ ] `ind-List`
 - [ ] Vectors
+  - [x] `Vec`
+  - [x] `vecnil`, `vec::`
+  - [ ] `ind-Vec`
 - [ ] Either
+  - [ ] `Either`
+  - [ ] `left`, `right`
+  - [ ] `ind-Either`
 - [ ] Equality
+  - [ ] `=`
+  - [ ] `same`
+  - [ ] `ind-=`
+  - [ ] `symm`
+  - [ ] `cong`
+  - [ ] `replace`
+  - [ ] `trans`
 - [ ] Universe
-- [ ] `claim` and `define`
-- [ ] `check-same`
-- [ ] Eval
+- [x] `claim` and `define`
+- [x] `check-same`
+- [x] Eval
 - [ ] `TODO`
 - [ ] Extension: Type in Type
 - [ ] Extension: Universe Hierarchy
