@@ -1,0 +1,8 @@
+---
+source: pielang/tests/test.rs
+input_file: pielang/tests/snapshots/ch7.pie
+---
+(the (Vec Atom 2) (vec:: 'pea (vec:: 'pea vecnil)))
+(the (→ Nat U) (λ (k) (→ (Vec Atom (add1 k)) Atom)))
+(the Atom 'celery)
+(the (→ (Vec Atom 3) (Vec Atom 2)) (λ (es) (vec:: (head es) (vec:: (head (tail es)) vecnil))))

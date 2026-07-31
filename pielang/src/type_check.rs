@@ -151,28 +151,28 @@ macro_rules! no_else {
 
 macro_rules! arrow {
     ($ty_a:expr, $ty_r:expr $(,)?) => {
-        core::Expr::Pi(Argument::Dummy, Ref::new($ty_a), Ref::new(shift_dbi(&$ty_r, 1, 0)))
+        core::Expr::Pi(Argument::Dummy, Ref::new($ty_a), Ref::new(shift_dbi(&$ty_r, 1)))
     };
     (ref $ty_a:expr, $ty_r:expr $(,)?) => {
-        core::Expr::Pi(Argument::Dummy, Ref::clone(&$ty_a), Ref::new(shift_dbi(&$ty_r, 1, 0)))
+        core::Expr::Pi(Argument::Dummy, Ref::clone(&$ty_a), Ref::new(shift_dbi(&$ty_r, 1)))
     };
     ($ty_a:expr, ref $ty_r:expr $(,)?) => {
-        core::Expr::Pi(Argument::Dummy, Ref::new($ty_a), Ref::new(shift_dbi(&$ty_r, 1, 0)))
+        core::Expr::Pi(Argument::Dummy, Ref::new($ty_a), Ref::new(shift_dbi(&$ty_r, 1)))
     };
     (ref $ty_a:expr, ref $ty_r:expr $(,)?) => {
-        core::Expr::Pi(Argument::Dummy, Ref::clone(&$ty_a), Ref::new(shift_dbi(&$ty_r, 1, 0)))
+        core::Expr::Pi(Argument::Dummy, Ref::clone(&$ty_a), Ref::new(shift_dbi(&$ty_r, 1)))
     };
     ($ty_a:expr, $($e:tt)+) => {
         core::Expr::Pi(
             Argument::Dummy,
             Ref::new($ty_a),
-            Ref::new(shift_dbi(&arrow!($($e)+), 1, 0)))
+            Ref::new(shift_dbi(&arrow!($($e)+), 1)))
     };
     (ref $ty_a:expr, $($e:tt)+) => {
         core::Expr::Pi(
             Argument::Dummy,
             Ref::clone(&$ty_a),
-            Ref::new(shift_dbi(&arrow!($($e)+), 1, 0)))
+            Ref::new(shift_dbi(&arrow!($($e)+), 1)))
     };
 }
 
@@ -218,12 +218,6 @@ macro_rules! U {
     };
 }
 
-macro_rules! B {
-    ($lit:literal) => {
-        core::Expr::I($lit)
-    };
-}
-
 /// 缩进守卫，进入时增加缩进，退出时自动恢复。
 struct IndentGuard;
 
@@ -251,7 +245,7 @@ impl std::ops::Drop for IndentGuard {
 
 /// 所有自由变量的 dbi 值加上一个数, depth 表示当前作用域深度
 /// TODO: 单元测试
-fn shift_dbi(e: &core::Expr, inc: usize, depth: usize) -> core::Expr {
+fn shift_dbi_d(e: &core::Expr, inc: usize, depth: usize) -> core::Expr {
     use core::Expr::*;
     if inc == 0 {
         return e.clone();
@@ -267,24 +261,30 @@ fn shift_dbi(e: &core::Expr, inc: usize, depth: usize) -> core::Expr {
         I(_) | Atom(_) | Nat(_) => e.clone(),
         S(bf, args) => S(
             bf,
-            args.iter().map(|arg| shift_dbi(arg, inc, depth)).collect(),
+            args.iter()
+                .map(|arg| shift_dbi_d(arg, inc, depth))
+                .collect(),
         ),
         App(f, arg) => App(
-            Ref::new(shift_dbi(f, inc, depth)),
-            Ref::new(shift_dbi(arg, inc, depth)),
+            Ref::new(shift_dbi_d(f, inc, depth)),
+            Ref::new(shift_dbi_d(arg, inc, depth)),
         ),
-        Lambda(arg, body) => Lambda(arg.clone(), Ref::new(shift_dbi(body, inc, depth + 1))),
+        Lambda(arg, body) => Lambda(arg.clone(), Ref::new(shift_dbi_d(body, inc, depth + 1))),
         Pi(arg, ty_a, ty_r) => Pi(
             arg.clone(),
-            Ref::new(shift_dbi(ty_a, inc, depth)),
-            Ref::new(shift_dbi(ty_r, inc, depth + 1)),
+            Ref::new(shift_dbi_d(ty_a, inc, depth)),
+            Ref::new(shift_dbi_d(ty_r, inc, depth + 1)),
         ),
         Sigma(arg, ty_a, ty_d) => Sigma(
             arg.clone(),
-            Ref::new(shift_dbi(ty_a, inc, depth)),
-            Ref::new(shift_dbi(ty_d, inc, depth + 1)),
+            Ref::new(shift_dbi_d(ty_a, inc, depth)),
+            Ref::new(shift_dbi_d(ty_d, inc, depth + 1)),
         ),
     }
+}
+
+fn shift_dbi(e: &core::Expr, inc: usize) -> core::Expr {
+    shift_dbi_d(e, inc, 0)
 }
 
 /// 执行 beta 变换 expr[e/var]，将 expr 中自由出现的 var 替换为 e，depth 表示当前作用域深度。
@@ -297,7 +297,7 @@ fn substitute(expr: &core::Expr, var: usize, e: &core::Expr, depth: usize) -> co
         Nat(_) | Atom(_) | I(_) => expr.clone(),
         Identifier(i, idx) => {
             if *idx == var {
-                shift_dbi(e, depth, 0)
+                shift_dbi(e, depth)
             } else if *idx > var {
                 Identifier(i.clone(), idx - 1)
             } else {
@@ -581,7 +581,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
             for (i, (name, (ty, _))) in env.iter().enumerate() {
                 if name.as_deref().is_some_and(|n| *n == **id) {
                     // convert to de Bruijn index
-                    break 'x (shift_dbi(ty, i + 1, 0), Identifier((*id).into(), i));
+                    break 'x (shift_dbi(ty, i + 1), Identifier((*id).into(), i));
                 }
             }
             unreachable!("Identifier {} not found in env", id)
@@ -597,7 +597,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                 // (U n): (U (add1 n))
                 [Ident(_, "U"), NatLit(_, n)] => (U!(Nat(*n + 1)), U!(Nat(*n))),
                 [Ident(_, "U"), n] => {
-                    let n_o = synthesize_with_type(n, &B!("Nat"), env)?;
+                    let n_o = synthesize_with_type(n, &I("Nat"), env)?;
                     match n_o {
                         Nat(n) => (U!(Nat(n + 1)), S("U", vec![n_o])),
                         _ => throw!(ErrorKind::CannotInferType {
@@ -628,8 +628,8 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                 }
                 // NatI-2
                 [Ident(_, "add1"), n] => {
-                    let n_o = synthesize_with_type(n, &B!("Nat"), env)?;
-                    (B!("Nat"), S("add1", vec![n_o]))
+                    let n_o = synthesize_with_type(n, &I("Nat"), env)?;
+                    (I("Nat"), S("add1", vec![n_o]))
                 }
                 // VecE-1
                 [Ident(_, "head"), v] => {
@@ -702,27 +702,32 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     (ty_b.as_ref().clone(), S("rec-Nat", vec![t_o, b_o, s_o]))
                 }
                 // NatE-4
-                // [Ident(_, "ind-Nat"), t, m, b, s] => {
-                //     let t_o = synthesize_with_type(t, &B!("Nat"), env)?;
-                //     let ty_m = pi!(B!("Nat"), U!());
-                //     let m_o = synthesize_with_type(m, &ty_m, env)?;
-                //     let m_o = Ref::new(m_o);
-                //     // FIXME: 在此需要编译期计算
-                //     let ty_b = app!(ref m_o, Nat(0));
-                //     let b_o = synthesize_with_type(b, &ty_b, env)?;
-                //     // s : (k : Nat) -> (m k) -> (m (add1 k))
-                //     let ty_s = pi!(
-                //         B!("Nat"),
-                //         app!(ref m_o, Identifier(0)),
-                //         app!(ref m_o, bapp!("add1", Identifier(1))),
-                //     );
-                //     let s_o = synthesize_with_type(s, &ty_s, env)?;
-                //     let ty_o = app!(ref m_o, t_o.clone());
-                //     (
-                //         ty_o,
-                //         S("ind-Nat", vec![t_o, m_o.as_ref().clone(), b_o, s_o]),
-                //     )
-                // }
+                [Ident(_, "ind-Nat"), t, m, b, s] => {
+                    let t_o = synthesize_with_type(t, &I("Nat"), env)?;
+                    // m : Nat -> U
+                    let ty_m = Pi(Argument::Dummy, Ref::new(I("Nat")), Ref::new(U!()));
+                    let m_o = synthesize_with_type(m, &ty_m, env)?;
+                    let m_o = Ref::new(m_o);
+                    let ty_b = normalize(&app!(ref m_o, Nat(0)), env);
+                    let b_o = synthesize_with_type(b, &ty_b, env)?;
+                    // s : (k : Nat) -> (m k) -> (m (add1 k))
+                    let k: Ref<str> = "k".into();
+                    let ty_s = Pi(
+                        Argument::Symbol(k.clone()),
+                        Ref::new(I("Nat")),
+                        Ref::new(Pi(
+                            Argument::Dummy,
+                            Ref::new(app!(shift_dbi(&m_o, 1), Identifier(k.clone(), 0))),
+                            Ref::new(app!(shift_dbi(&m_o, 2), S("add1", vec![Identifier(k, 1)]))),
+                        )),
+                    );
+                    let s_o = synthesize_with_type(s, &ty_s, env)?;
+                    let ty_o = app!(ref m_o, t_o.clone());
+                    (
+                        ty_o,
+                        S("ind-Nat", vec![t_o, m_o.as_ref().clone(), b_o, s_o]),
+                    )
+                }
                 // ListE-1
                 [Ident(_, "rec-List"), t, b, s] => {
                     let (ty_t, t_o) = synthesize(t, env)?;
@@ -758,12 +763,12 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                 // }
                 // VecE-3
                 // [Ident(_, "ind-Vec"), l, t, m, b, s] => {
-                //     let l_o = synthesize_with_type(l, &B!("Nat"), env)?;
+                //     let l_o = synthesize_with_type(l, &I("Nat"), env)?;
                 //     let (ty_t, t_o) = synthesize(t, env)?;
                 //     try_match! { let S("Vec", [ty_e, n]) = &ty_t; env }
-                //     expr_check_same(&l_o, n, &B!("Nat"), env)?;
+                //     expr_check_same(&l_o, n, &I("Nat"), env)?;
                 //     let ty_m = pi!(
-                //         B!("Nat"),
+                //         I("Nat"),
                 //         bapp!("Vec", ty_e.clone(), Identifier(0)),
                 //         U!()
                 //     );
@@ -773,7 +778,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                 //     let ty_b = app!(ref m_o, bty::zero(), bty::vecnil());
                 //     let b_o = synthesize_with_type(b, &ty_b, env)?;
                 //     let ty_s = pi!(
-                //         B!("Nat"),
+                //         I("Nat"),
                 //         ty_e.clone(),
                 //         bapp!("Vec", ty_e.clone(), Identifier(1)),
                 //         app!(ref m_o, Identifier(2), Identifier(0)),
@@ -952,7 +957,7 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
         Identifier(_, idx) => {
             let (_, (_, def)) = env.get_index(*idx).expect("Identifier index out of bounds");
             let d = def.borrow();
-            d.as_ref().map(|d| shift_dbi(d, *idx + 1, 0))
+            d.as_ref().map(|d| shift_dbi(d, *idx + 1))
         }
         // FunSame-β, ((λ (x) body) arg) -> body[x := arg]
         App(f, arg) => {
@@ -1115,6 +1120,25 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
                 some_if!(c => S("tail", vec![v_o]))
             }
         }
+        S("ind-Nat", args) => {
+            no_else!( let [t, m, b, s] = &args[..] );
+            let (c1, t_o) = norm!(t, env);
+            let (c2, m_o) = norm!(m, env);
+            let (c3, b_o) = norm!(b, env);
+            let (c4, s_o) = norm!(s, env);
+            match &t_o {
+                Nat(0) => Some(b_o),
+                Nat(_) | S("add1", _) => {
+                    let n_sub1 = sub1(&t_o);
+                    let ind_sub1 = S(
+                        "ind-Nat",
+                        vec![n_sub1.clone(), m_o.clone(), b_o.clone(), s_o.clone()],
+                    );
+                    Some(app!(s_o, n_sub1, ind_sub1))
+                }
+                _ => some_if!(c1 || c2 || c3 || c4 => S("ind-Nat", vec![t_o, m_o, b_o, s_o])),
+            }
+        }
         S(bf, args) => {
             let results: Vec<_> = args.iter().map(|a| norm!(a, env)).collect();
             if results.iter().any(|(c, _)| *c) {
@@ -1228,7 +1252,7 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
                 // VecF
                 [Ident(_, "Vec"), ty, len] => {
                     let (l, ty_o) = resolve_type(ty, env)?;
-                    let len_o = synthesize_with_type(len, &B!("Nat"), env)?;
+                    let len_o = synthesize_with_type(len, &I("Nat"), env)?;
                     (l, bapp!("Vec", ty_o, len_o))
                 }
                 // EitherF
@@ -1247,7 +1271,7 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
                 // UF
                 [Ident(_, "U"), NatLit(_, n)] => (*n + 1, U!(Nat(*n))),
                 [Ident(_, "U"), n] => {
-                    let n_o = synthesize_with_type(n, &B!("Nat"), env)?;
+                    let n_o = synthesize_with_type(n, &I("Nat"), env)?;
                     match n_o {
                         Nat(n) => (n + 1, U!(n_o)),
                         _ => throw!(ErrorKind::CannotInferType {
@@ -1273,7 +1297,8 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
                 [Ident(_, ctr), ..] if PIE_CONSTRUCTORS.contains(ctr) => {
                     throw!(ErrorKind::NotType(format!("{}", e)))
                 }
-                _ => return Err(ErrorKind::NotType(format!("{}", e)).into()),
+                // El
+                _ => (0, synthesize_with_type(e, &U!(), env)?),
             }
         }
         // 内建单例对象
@@ -1336,6 +1361,17 @@ fn type_check_same(ty1: &core::Expr, ty2: &core::Expr, env: &Env) -> Result<(), 
     Ok(())
 }
 
+// fn print_env(env: &Env) {
+//     eprintln!("Current environment:");
+//     for (i, (id, (_, def))) in env.iter().enumerate() {
+//         let def_str = match def.borrow().as_ref() {
+//             Some(d) => format!("{}", dpp(d, env)),
+//             None => "_".to_string(),
+//         };
+//         eprintln!("  {}: {:?} = {}", i, id, def_str);
+//     }
+// }
+
 fn is_type_check_same(ty1: &core::Expr, ty2: &core::Expr, env: &Env) -> bool {
     tc_log!(
         "check `{}` and `{}` are the same type",
@@ -1343,8 +1379,14 @@ fn is_type_check_same(ty1: &core::Expr, ty2: &core::Expr, env: &Env) -> bool {
         dpp(ty2, env)
     );
 
+    let ty1 = &normalize(ty1, env);
+    let ty2 = &normalize(ty2, env);
+
+    // eprintln!("is_type_check_same: normalized ty1 = {}", dpp(ty1, env));
+    // eprintln!("is_type_check_same: normalized ty2 = {}", dpp(ty2, env));
+    // print_env(env);
+
     use core::Expr::*;
-    // TODO: 比较前充分计算 ty1 和 ty2
     let ret = match (ty1, ty2) {
         (Identifier(_id1, idx1), Identifier(_id2, idx2)) => idx1 == idx2,
         (I(ty1), I(ty2)) => ty1 == ty2,
@@ -1362,7 +1404,7 @@ fn is_type_check_same(ty1: &core::Expr, ty2: &core::Expr, env: &Env) -> bool {
             ("List", [ty_e1], "List", [ty_e2]) => is_type_check_same(ty_e1, ty_e2, env),
             ("Vec", [ty_e1, len1], "Vec", [ty_e2, len2]) => {
                 is_type_check_same(ty_e1, ty_e2, env)
-                    && is_expr_check_same(len1, len2, &B!("Nat"), env)
+                    && is_expr_check_same(len1, len2, &I("Nat"), env)
             }
             ("Either", [ty_l1, ty_r1], "Either", [ty_l2, ty_r2]) => {
                 is_type_check_same(ty_l1, ty_l2, env) && is_type_check_same(ty_r1, ty_r2, env)
@@ -1372,7 +1414,7 @@ fn is_type_check_same(ty1: &core::Expr, ty2: &core::Expr, env: &Env) -> bool {
                     && is_expr_check_same(from1, from2, ty_x1, env)
                     && is_expr_check_same(to1, to2, ty_x1, env)
             }
-            ("U", [n1], "U", [n2]) => is_expr_check_same(n1, n2, &B!("Nat"), env),
+            ("U", [n1], "U", [n2]) => is_expr_check_same(n1, n2, &I("Nat"), env),
             ("U", _, "List" | "Vec" | "=" | "Either", _) => false,
             ("List" | "Vec" | "=" | "Either", _, "U", _) => false,
             _ => {
@@ -1429,7 +1471,7 @@ fn is_expr_check_same(c1: &core::Expr, c2: &core::Expr, ct: &core::Expr, env: &E
     let ret = match (c1, c2) {
         // HypothesisSame
         (Identifier(_, idx1), Identifier(_, idx2)) => idx1 == idx2,
-        (S("U", l1), S("U", l2)) => is_expr_check_same(&l1[0], &l2[0], &B!("Nat"), env),
+        (S("U", l1), S("U", l2)) => is_expr_check_same(&l1[0], &l2[0], &I("Nat"), env),
         // 比较自然数，考虑字面量和构造器表示
         // NatSame-zero, NatSame-literal
         (Nat(m), Nat(n)) => m == n,
