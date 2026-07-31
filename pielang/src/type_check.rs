@@ -570,6 +570,12 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
             (U!(), I(ast::to_builtin_name(ty)))
         }
         Ident(_, "U") => (U!(Nat(1)), U!(Nat(0))),
+        Ident(sp, "nil" | "vecnil") => throw!(LocatedError {
+            loc: Some(*sp),
+            erk: ErrorKind::CannotInferType {
+                expr: format!("{}", e)
+            }
+        }),
         // Hypothesis
         Ident(_, id) => 'x: {
             for (i, (name, (ty, _))) in env.iter().enumerate() {
@@ -1635,5 +1641,11 @@ mod unit_tests {
         insta::assert_snapshot!(do_statement("(the Nat zero)"), @"(the Nat 0)");
         insta::assert_snapshot!(do_statement("(the Nat (add1 zero))"), @"(the Nat 1)");
         insta::assert_snapshot!(do_statement("((the (-> Nat Nat) (lambda (x) (add1 x))) 1)"), @"(the Nat 2)");
+    }
+
+    #[test]
+    fn nil_vecnil() {
+        insta::assert_snapshot!(do_statement("nil"), @"Error: 0:3: Can't determine the type of nil");
+        insta::assert_snapshot!(do_statement("vecnil"), @"Error: 0:6: Can't determine the type of vecnil");
     }
 }
