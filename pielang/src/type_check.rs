@@ -1729,4 +1729,11 @@ mod unit_tests {
         insta::assert_snapshot!(do_statement("nil"), @"Error: 0:3: Can't determine the type of nil");
         insta::assert_snapshot!(do_statement("vecnil"), @"Error: 0:6: Can't determine the type of vecnil");
     }
+
+    #[test]
+    fn normalize_by_type() {
+        // TODO: every Trivial values are equal. So do Absurd values.
+        // insta::assert_snapshot!(do_statement("(the (Pi ((x Trivial)) (= Trivial x sole)) (lambda (x) (same sole)))"), @"");
+        // insta::assert_snapshot!(do_statement("(the (Pi ((x Absurd)(y Absurd)) (= Absurd x y)) (lambda (x y) (same x)))"), @"");
+    }
 }
