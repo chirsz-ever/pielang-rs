@@ -818,11 +818,15 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     (m_o.clone(), S("ind-Absurd", vec![t_o, m_o]))
                 }
                 // EqE-1
-                [Ident(_, "replace"), t, _m, b] => {
+                [Ident(_, "replace"), t, m, b] => {
                     let (ty_t, t_o) = synthesize(t, env)?;
+                    // t : (= X from to)
                     try_match! { let S("=", [ty_x, from, to]) = &ty_t; env }
-                    let m_o = arrow!(ty_x.clone(), U!());
+                    // m : X -> U
+                    let ty_m = arrow!(ty_x.clone(), U!());
+                    let m_o = synthesize_with_type(m, &ty_m, env)?;
                     let m_o = Ref::new(m_o);
+                    // b : m from
                     let b_o = synthesize_with_type(b, &app!(ref m_o, from.clone()), env)?;
                     (
                         app!(ref m_o, to.clone()),
@@ -1147,6 +1151,19 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
             }
         }
         // TODO: ind-Vec, VecSame-i-Vι1, VecSame-i-Vι2
+        // EqSame-rι, (replace (same e) m b) -> b
+        S("replace", args) => {
+            no_else!( let [t, m, b] = &args[..] );
+            let (c1, t_o) = norm!(t, env);
+            let (c2, m_o) = norm!(m, env);
+            let (c3, b_o) = norm!(b, env);
+            if let S("same", _same_args) = &t_o {
+                // no_else!( let [e] = &same_args[..] );
+                Some(b_o)
+            } else {
+                some_if!(c1 || c2 || c3 => S("replace", vec![t_o, m_o, b_o]))
+            }
+        }
         // EqSame-cι, (cong (same e) f) -> (same (f e))
         S("cong", args) => {
             no_else!( let [ty_x, t, f] = &args[..] );
@@ -1158,6 +1175,17 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
                 Some(S("same", vec![app!(f_o, e.clone())]))
             } else {
                 some_if!(c1 || c2 || c3 => S("cong", vec![ty_x_o, t_o, f_o]))
+            }
+        }
+        // EqSame-sι, (symm (same e)) -> (same e)
+        S("symm", args) => {
+            no_else!( let [t] = &args[..] );
+            let (c, t_o) = norm!(t, env);
+            if let S("same", same_args) = &t_o {
+                no_else!( let [e] = &same_args[..] );
+                Some(S("same", vec![e.clone()]))
+            } else {
+                some_if!(c => S("symm", vec![t_o]))
             }
         }
         S(bf, args) => {

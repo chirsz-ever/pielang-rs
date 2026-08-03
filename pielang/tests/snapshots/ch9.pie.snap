@@ -1,0 +1,6 @@
+---
+source: pielang/tests/test.rs
+input_file: pielang/tests/snapshots/ch9.pie
+---
+(the (= Nat 34 34) (same 34))
+(the (Vec Atom 6) (vec:: 'chocolate-chip (vec:: 'chocolate-chip (vec:: 'oatmeal-raisin (vec:: 'oatmeal-raisin (vec:: 'vanilla-wafer (vec:: 'vanilla-wafer vecnil)))))))

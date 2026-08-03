@@ -80,9 +80,9 @@ ARGS:
 - [ ] Equality
   - [x] `=`
   - [x] `same`
-  - [ ] `replace`
+  - [x] `replace`
   - [x] `cong`
-  - [ ] `symm`
+  - [x] `symm`
   - [ ] `trans`
   - [ ] `ind-=`
 - [ ] Universe
