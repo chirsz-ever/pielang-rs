@@ -78,7 +78,7 @@ ARGS:
   - [ ] `left`, `right`
   - [ ] `ind-Either`
 - [ ] Equality
-  - [ ] `=`
+  - [x] `=`
   - [ ] `same`
   - [ ] `ind-=`
   - [ ] `symm`

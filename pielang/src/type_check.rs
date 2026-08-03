@@ -1676,6 +1676,9 @@ mod unit_tests {
         insta::assert_snapshot!(do_statement("(tail (the (Vec Atom 2) (vec:: 'a (vec:: 'b vecnil))))"), @"(the (Vec Atom 1) (vec:: 'b vecnil))");
         insta::assert_snapshot!(do_statement("(tail (the (Vec Atom 1) (vec:: 'a vecnil)))"), @"(the (Vec Atom 0) vecnil)");
         insta::assert_snapshot!(do_statement("(tail (the (Vec Atom 0) vecnil))"), @"Error: Expected Vec longer than 1 but given (the (Vec Atom 0) vecnil)");
+        insta::assert_snapshot!(do_statement("(= Atom 'kale 'blackberries)"), @"(the U (= Atom 'kale 'blackberries))");
+        insta::assert_snapshot!(do_statement("(= Nat 1 (add1 zero))"), @"(the U (= Nat 1 1))");
+        insta::assert_snapshot!(do_statement("(= U Nat Nat)"), @"(the (U 1) (= U Nat Nat))");
     }
 
     #[test]
