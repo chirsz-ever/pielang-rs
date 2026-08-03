@@ -79,12 +79,12 @@ ARGS:
   - [ ] `ind-Either`
 - [ ] Equality
   - [x] `=`
-  - [ ] `same`
-  - [ ] `ind-=`
-  - [ ] `symm`
-  - [ ] `cong`
+  - [x] `same`
   - [ ] `replace`
+  - [x] `cong`
+  - [ ] `symm`
   - [ ] `trans`
+  - [ ] `ind-=`
 - [ ] Universe
 - [x] `claim` and `define`
 - [x] `check-same`

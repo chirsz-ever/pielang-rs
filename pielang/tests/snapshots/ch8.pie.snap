@@ -1,0 +1,10 @@
+---
+source: pielang/tests/test.rs
+input_file: pielang/tests/snapshots/ch8.pie
+---
+(the Nat 1)
+(the U (= Nat 2 2))
+(the U (Π ((n Nat)) (= Nat (add1 n) (add1 n))))
+(the (= Nat 21 21) (same 21))
+(the (= Nat 4 4) (same 4))
+(the (= Nat 3 3) (same 3))

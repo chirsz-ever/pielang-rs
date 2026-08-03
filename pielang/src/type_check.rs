@@ -843,8 +843,8 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                         app!(ref f_o, from.clone()),
                         app!(ref f_o, to.clone())
                     );
-                    // FIXME: TLT 中需要多一个参数
-                    (ty, bapp!("cong", t_o, f_o.as_ref().clone()))
+                    // CHECK: TLT 中需要多一个参数?
+                    (ty, bapp!("cong", ty_x1.clone(), t_o, f_o.as_ref().clone()))
                 }
                 // EqE-3
                 [Ident(_, "symm"), t] => {
@@ -1041,6 +1041,7 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
                 some_if!(c1 || c2 => S("cons", vec![a_o, d_o]))
             }
         }
+        // NatSame-w-Nι1, NatSame-w-Nι2
         S("which-Nat", args) => {
             no_else!( let [t, b, s] = &args[..] );
             let (c1, t_o) = norm!(t, env);
@@ -1055,6 +1056,7 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
                 some_if!(c1 || c2 || c3 => S("which-Nat", vec![t_o, b_o, s_o]))
             }
         }
+        // NatSame-it-Nι1, NatSame-it-Nι2
         S("iter-Nat", args) => {
             no_else!( let [t, b, s] = &args[..] );
             let (c1, t_o) = norm!(t, env);
@@ -1070,6 +1072,7 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
                 some_if!(c1 || c2 || c3 => S("iter-Nat", vec![t_o, b_o, s_o]))
             }
         }
+        // NatSame-r-Nι1, NatSame-r-Nι2
         S("rec-Nat", args) => {
             no_else!( let [t, b, s] = &args[..] );
             let (c1, t_o) = norm!(t, env);
@@ -1085,6 +1088,7 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
                 some_if!(c1 || c2 || c3 => S("rec-Nat", vec![t_o, b_o, s_o]))
             }
         }
+        // ListSame-r-Lι1, ListSame-r-Lι2
         S("rec-List", args) => {
             no_else!( let [t, b, s] = &args[..] );
             let (c1, t_o) = norm!(t, env);
@@ -1100,26 +1104,7 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
                 some_if!(c1 || c2 || c3 => S("rec-List", vec![t_o, b_o, s_o]))
             }
         }
-        S("head", args) => {
-            no_else!( let [v] = &args[..] );
-            let (c, v_o) = norm!(v, env);
-            if let S("vec::", vec_args) = &v_o {
-                no_else!( let [e, _es] = &vec_args[..] );
-                Some(e.clone())
-            } else {
-                some_if!(c => S("head", vec![v_o]))
-            }
-        }
-        S("tail", args) => {
-            no_else!( let [v] = &args[..] );
-            let (c, v_o) = norm!(v, env);
-            if let S("vec::", vec_args) = &v_o {
-                no_else!( let [_e, es] = &vec_args[..] );
-                Some(es.clone())
-            } else {
-                some_if!(c => S("tail", vec![v_o]))
-            }
-        }
+        // NatSame-in-Nι1, NatSame-in-Nι2
         S("ind-Nat", args) => {
             no_else!( let [t, m, b, s] = &args[..] );
             let (c1, t_o) = norm!(t, env);
@@ -1137,6 +1122,42 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
                     Some(app!(s_o, n_sub1, ind_sub1))
                 }
                 _ => some_if!(c1 || c2 || c3 || c4 => S("ind-Nat", vec![t_o, m_o, b_o, s_o])),
+            }
+        }
+        // VecSame-hι
+        S("head", args) => {
+            no_else!( let [v] = &args[..] );
+            let (c, v_o) = norm!(v, env);
+            if let S("vec::", vec_args) = &v_o {
+                no_else!( let [e, _es] = &vec_args[..] );
+                Some(e.clone())
+            } else {
+                some_if!(c => S("head", vec![v_o]))
+            }
+        }
+        // VecSame-tι
+        S("tail", args) => {
+            no_else!( let [v] = &args[..] );
+            let (c, v_o) = norm!(v, env);
+            if let S("vec::", vec_args) = &v_o {
+                no_else!( let [_e, es] = &vec_args[..] );
+                Some(es.clone())
+            } else {
+                some_if!(c => S("tail", vec![v_o]))
+            }
+        }
+        // TODO: ind-Vec, VecSame-i-Vι1, VecSame-i-Vι2
+        // EqSame-cι, (cong (same e) f) -> (same (f e))
+        S("cong", args) => {
+            no_else!( let [ty_x, t, f] = &args[..] );
+            let (c1, ty_x_o) = norm!(ty_x, env);
+            let (c2, t_o) = norm!(t, env);
+            let (c3, f_o) = norm!(f, env);
+            if let S("same", same_args) = &t_o {
+                no_else!( let [e] = &same_args[..] );
+                Some(S("same", vec![app!(f_o, e.clone())]))
+            } else {
+                some_if!(c1 || c2 || c3 => S("cong", vec![ty_x_o, t_o, f_o]))
             }
         }
         S(bf, args) => {
@@ -1458,6 +1479,7 @@ pub fn expr_check_same(
     Ok(())
 }
 
+// TODO: do we need ct?
 fn is_expr_check_same(c1: &core::Expr, c2: &core::Expr, ct: &core::Expr, env: &Env) -> bool {
     tc_log!(
         "check `{}` and `{}` are the same `{}`",
@@ -1466,8 +1488,10 @@ fn is_expr_check_same(c1: &core::Expr, c2: &core::Expr, ct: &core::Expr, env: &E
         dpp(ct, env)
     );
 
+    let c1 = &normalize(c1, env);
+    let c2 = &normalize(c2, env);
+
     use core::Expr::*;
-    // TODO: 比较前充分计算 c1、c2、ct
     let ret = match (c1, c2) {
         // HypothesisSame
         (Identifier(_, idx1), Identifier(_, idx2)) => idx1 == idx2,
@@ -1497,8 +1521,19 @@ fn is_expr_check_same(c1: &core::Expr, c2: &core::Expr, ct: &core::Expr, env: &E
         }
         // FunSame-λ
         (Lambda(_, r1), Lambda(_, r2)) => {
-            no_else! { let Pi(a, ty_a, ty_r) = ct }
-            is_expr_check_same(r1, r2, ty_r, &env_ext_arg(env, a, ty_a))
+            if let Pi(a, ty_a, ty_r) = ct {
+                is_expr_check_same(r1, r2, ty_r, &env_ext_arg(env, a, ty_a))
+            } else {
+                is_expr_check_same(r1, r2, &I("ignore"), &env_ext_arg_notype(env, &Argument::Dummy))
+            }
+        }
+        // builtin function application are considered the same if their function names and arguments are the same
+        (S(f1, args1), S(f2, args2)) if f1 == f2 => {
+            let mut ret = true;
+            for (arg1, arg2) in args1.iter().zip(args2.iter()) {
+                ret &= is_expr_check_same(arg1, arg2, &I("ignore"), env);
+            }
+            ret
         }
         _ => false,
     };
@@ -1558,6 +1593,7 @@ mod unit_tests {
     }
 
     fn do_statement(s: &str) -> String {
+        eprintln!("do_statement: {}", s);
         match do_statement_0(s) {
             Ok(v) => v,
             Err(e) => format!("Error: {}", e),
