@@ -510,8 +510,7 @@ fn is_add1(e: &core::Expr) -> bool {
     use core::Expr::*;
     match e {
         Nat(0) => false,
-        Nat(_) => true,
-        S(bf, _) if &**bf == "add1" => true,
+        Nat(_) | S("add1", _) => true,
         _ => false,
     }
 }
