@@ -446,15 +446,18 @@ pub fn synthesize_with_type(
         // ListI-1
         (Ident(_, "nil"), S("List", _ty_args)) => I("nil"),
         // VecI-1
-        (Ident(_, "vecnil"), S("Vec", ty_args)) => {
+        (Ident(sp, "vecnil"), S("Vec", ty_args)) => {
             no_else! { let [_ty_e, l] = &ty_args[..] }
             if let Nat(0) = l {
                 I("vecnil")
             } else {
-                throw!(ErrorKind::TypeNotMatch {
-                    expected: format!("{}", dpp(ty, env)),
-                    given: "vecnil".to_string(),
-                })
+                throw!(
+                    *sp,
+                    ErrorKind::TypeNotMatch {
+                        expected: format!("{}", dpp(ty, env)),
+                        given: "vecnil".to_string(),
+                    }
+                )
             }
         }
         (AppExpr(_, args), S(ty_bf, ty_args)) => {
@@ -588,12 +591,12 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
         // UF
         Ident(_, "U") => (U!(1), U!(0)),
         // nil 和 vecnil 必须附加类型
-        Ident(sp, "nil" | "vecnil") => throw!(LocatedError {
-            loc: Some(*sp),
-            erk: ErrorKind::CannotInferType {
+        Ident(sp, "nil" | "vecnil") => throw!(
+            *sp,
+            ErrorKind::CannotInferType {
                 expr: format!("{}", e)
             }
-        }),
+        ),
         // Hypothesis
         Ident(_, id) => 'x: {
             for (i, (name, (ty, _))) in env.iter().enumerate() {
@@ -605,10 +608,13 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
             unreachable!("Identifier {} not found in env", id)
         }
         // lambda 表达式无法直接综合出类型，必须通过 Pi 类型检查
-        LambdaExpr(_, _args, _body) => {
-            throw!(ErrorKind::CannotInferType {
-                expr: e.to_string()
-            })
+        LambdaExpr(sp, _args, _body) => {
+            throw!(
+                *sp,
+                ErrorKind::CannotInferType {
+                    expr: e.to_string()
+                }
+            )
         }
         // FunF-1, FunF-2
         PiExpr(sp, args, body) => {
@@ -688,9 +694,12 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     (U!(add1(&n_o)), U!(n_o))
                 }
                 // nil 和 vecnil 必须附加类型
-                [Ident(_, s)] => throw!(ErrorKind::CannotInferType {
-                    expr: s.to_string()
-                }),
+                [Ident(sp, s)] => throw!(
+                    *sp,
+                    ErrorKind::CannotInferType {
+                        expr: s.to_string()
+                    }
+                ),
                 // "The" 规则
                 [Ident(_, "the"), ty, expr] => {
                     let (_, ty_o) = resolve_type(ty, env)?;
@@ -715,16 +724,19 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     (I("Nat"), S("add1", vec![n_o]))
                 }
                 // VecE-1
-                [Ident(_, "head"), v] => {
+                [Ident(sp, "head"), v] => {
                     let (ty_v, v_o) = synthesize(v, env)?;
                     try_match! { let S("Vec", [ty_e, len]) = &ty_v; env };
                     if is_add1(len) {
                         (ty_e.clone(), S("head", vec![v_o]))
                     } else {
-                        throw!(ErrorKind::TypeNotMatch {
-                            expected: "Vec longer than 1".to_owned(),
-                            given: format!("{}", v),
-                        })
+                        throw!(
+                            *sp,
+                            ErrorKind::TypeNotMatch {
+                                expected: "Vec longer than 1".to_owned(),
+                                given: format!("{}", v),
+                            }
+                        )
                     }
                 }
                 // VecF
@@ -734,17 +746,20 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     (U!(Nat(l)), bapp!("Vec", ty_o, len_o))
                 }
                 // VecE-2
-                [Ident(_, "tail"), v] => {
+                [Ident(sp, "tail"), v] => {
                     let (ty_v, v_o) = synthesize(v, env)?;
                     try_match! { let S("Vec", [ty_e, len]) = &ty_v; env };
                     if is_add1(len) {
                         let ty_subv = bapp!("Vec", ty_e.clone(), sub1(len));
                         (ty_subv, S("tail", vec![v_o]))
                     } else {
-                        throw!(ErrorKind::TypeNotMatch {
-                            expected: "Vec longer than 1".to_owned(),
-                            given: format!("{}", v),
-                        })
+                        throw!(
+                            *sp,
+                            ErrorKind::TypeNotMatch {
+                                expected: "Vec longer than 1".to_owned(),
+                                given: format!("{}", v),
+                            }
+                        )
                     }
                 }
                 // ΣF-Pair
@@ -1324,8 +1339,8 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
 
     // 先排除不是类型的项
     match e {
-        NatLit(_, _) | AtomLit(_, _) => {
-            throw!(e.span(), ErrorKind::NotType(format!("{}", e)));
+        NatLit(sp, _) | AtomLit(sp, _) => {
+            throw!(*sp, ErrorKind::NotType(format!("{}", e)));
         }
         AppExpr(_, args) => {
             match args.as_slice() {
@@ -1725,13 +1740,13 @@ mod unit_tests {
         insta::assert_snapshot!(do_statement("(Vec Atom 3)"), @"(the U (Vec Atom 3))");
         insta::assert_snapshot!(do_statement("(the (Vec Atom 0) vecnil)"), @"(the (Vec Atom 0) vecnil)");
         insta::assert_snapshot!(do_statement("(the (Vec Atom 1) (vec:: 'oyster vecnil))"), @"(the (Vec Atom 1) (vec:: 'oyster vecnil))");
-        insta::assert_snapshot!(do_statement("(the (Vec Atom 2) (vec:: 'oyster vecnil))"), @"Error: Expected (Vec Atom 1) but given vecnil");
-        insta::assert_snapshot!(do_statement("(the (Vec Atom 3) (vec:: 'crimini (vec:: 'shiitake vecnil)))"), @"Error: Expected (Vec Atom 1) but given vecnil");
+        insta::assert_snapshot!(do_statement("(the (Vec Atom 2) (vec:: 'oyster vecnil))"), @"Error: 33:39: Expected (Vec Atom 1) but given vecnil");
+        insta::assert_snapshot!(do_statement("(the (Vec Atom 3) (vec:: 'crimini (vec:: 'shiitake vecnil)))"), @"Error: 51:57: Expected (Vec Atom 1) but given vecnil");
         insta::assert_snapshot!(do_statement("(head (the (Vec Atom 2) (vec:: 'a (vec:: 'b vecnil))))"), @"(the Atom 'a)");
-        insta::assert_snapshot!(do_statement("(head (the (Vec Atom 0) vecnil))"), @"Error: Expected Vec longer than 1 but given (the (Vec Atom 0) vecnil)");
+        insta::assert_snapshot!(do_statement("(head (the (Vec Atom 0) vecnil))"), @"Error: 1:5: Expected Vec longer than 1 but given (the (Vec Atom 0) vecnil)");
         insta::assert_snapshot!(do_statement("(tail (the (Vec Atom 2) (vec:: 'a (vec:: 'b vecnil))))"), @"(the (Vec Atom 1) (vec:: 'b vecnil))");
         insta::assert_snapshot!(do_statement("(tail (the (Vec Atom 1) (vec:: 'a vecnil)))"), @"(the (Vec Atom 0) vecnil)");
-        insta::assert_snapshot!(do_statement("(tail (the (Vec Atom 0) vecnil))"), @"Error: Expected Vec longer than 1 but given (the (Vec Atom 0) vecnil)");
+        insta::assert_snapshot!(do_statement("(tail (the (Vec Atom 0) vecnil))"), @"Error: 1:5: Expected Vec longer than 1 but given (the (Vec Atom 0) vecnil)");
         insta::assert_snapshot!(do_statement("(= Atom 'kale 'blackberries)"), @"(the U (= Atom 'kale 'blackberries))");
         insta::assert_snapshot!(do_statement("(= Nat 1 (add1 zero))"), @"(the U (= Nat 1 1))");
         insta::assert_snapshot!(do_statement("(= U Nat Nat)"), @"(the (U 1) (= U Nat Nat))");
