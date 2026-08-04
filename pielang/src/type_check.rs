@@ -83,6 +83,12 @@ macro_rules! throw {
     ($e:expr) => {
         return Err(Error::from($e))
     };
+    ($sp:expr, $e:expr) => {
+        return Err(Error {
+            loc: Some($sp),
+            erk: $e,
+        })
+    };
 }
 
 #[derive(Debug, Clone)]
@@ -212,6 +218,9 @@ macro_rules! bapp {
 macro_rules! U {
     () => {
         core::Expr::S("U", vec![Nat(0)])
+    };
+    ($e:literal) => {
+        core::Expr::S("U", vec![Nat($e)])
     };
     ($e:expr) => {
         core::Expr::S("U", vec![$e])
@@ -530,6 +539,14 @@ fn sub1(e: &core::Expr) -> core::Expr {
     }
 }
 
+fn add1(e: &core::Expr) -> core::Expr {
+    use core::Expr::*;
+    match e {
+        Nat(n) => Nat(n + 1),
+        _ => S("add1", vec![e.clone()]),
+    }
+}
+
 // fn ppenv(env: &Env) -> String {
 //     let mut s = String::new();
 //     s.push_str("[");
@@ -568,7 +585,9 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
         Ident(_, ty @ ("Atom" | "Nat" | "Trivial" | "Absurd")) => {
             (U!(), I(ast::to_builtin_name(ty)))
         }
-        Ident(_, "U") => (U!(Nat(1)), U!(Nat(0))),
+        // UF
+        Ident(_, "U") => (U!(1), U!(0)),
+        // nil 和 vecnil 必须附加类型
         Ident(sp, "nil" | "vecnil") => throw!(LocatedError {
             loc: Some(*sp),
             erk: ErrorKind::CannotInferType {
@@ -585,28 +604,88 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
             }
             unreachable!("Identifier {} not found in env", id)
         }
+        // lambda 表达式无法直接综合出类型，必须通过 Pi 类型检查
         LambdaExpr(_, _args, _body) => {
             throw!(ErrorKind::CannotInferType {
                 expr: e.to_string()
             })
         }
-        PiExpr(..) | SigmaExpr(..) | ArrowExpr(..) => resolve_type_rule(e, env)?,
+        // FunF-1, FunF-2
+        PiExpr(sp, args, body) => {
+            match args.as_slice() {
+                // FunF-1
+                [(Id(_, id), ty_a)] => {
+                    let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
+                    let id = (*id).into();
+                    let (l_r, ty_r_o) = resolve_type(body, &env_ext(env, &id, &ty_a_o))?;
+                    let arg_o = if ident_occur_in(0, &ty_r_o) {
+                        Argument::Symbol(id)
+                    } else {
+                        Argument::Dummy
+                    };
+                    (
+                        U!(Nat(std::cmp::max(l_a, l_r))),
+                        Pi(arg_o, ty_a_o.into(), ty_r_o.into()),
+                    )
+                }
+                // FunF-2
+                [(Id(_, id), ty_a), rargs @ ..] => {
+                    let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
+                    let id = (*id).into();
+                    let (l_r, ty_r_o) = resolve_type(
+                        &PiExpr(*sp, rargs.to_vec(), body.clone()),
+                        &env_ext(env, &id, &ty_a_o),
+                    )?;
+                    let arg_o = if ident_occur_in(0, &ty_r_o) {
+                        Argument::Symbol(id)
+                    } else {
+                        Argument::Dummy
+                    };
+                    (
+                        U!(Nat(std::cmp::max(l_a, l_r))),
+                        Pi(arg_o, ty_a_o.into(), ty_r_o.into()),
+                    )
+                }
+                _ => unreachable!(),
+            }
+        }
+        // FunF->1, FunF->2
+        ArrowExpr(sp, args) => {
+            match args.as_slice() {
+                // FunF->1, (→ A R) -> (Π ((_ A)) R)
+                [ty_a, ty_r] => {
+                    let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
+                    let (l_r, ty_r_o) = resolve_type(ty_r, &env_ext_dummy(env, &ty_a_o))?;
+                    (
+                        U!(Nat(std::cmp::max(l_a, l_r))),
+                        Pi(Argument::Dummy, Ref::new(ty_a_o), Ref::new(ty_r_o)),
+                    )
+                }
+                // FunF->2, (→ A B ... R) -> (Π ((_ A)) (→ B ... R))
+                [ty_a, rargs @ ..] => {
+                    let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
+                    // FIXME: right span
+                    let (l_r, ty_r_o) = resolve_type(
+                        &ArrowExpr(*sp, rargs.to_vec()),
+                        &env_ext_dummy(env, &ty_a_o),
+                    )?;
+                    (
+                        U!(Nat(std::cmp::max(l_a, l_r))),
+                        Pi(Argument::Dummy, Ref::new(ty_a_o), Ref::new(ty_r_o)),
+                    )
+                }
+                _ => unreachable!(),
+            }
+        }
+        // SigmaF-1
+        SigmaExpr(_, _args, _body) => todo!("SigmaExpr"),
         AppExpr(_, exprs) => {
             match exprs.as_slice() {
                 // (U n): (U (add1 n))
                 [Ident(_, "U"), NatLit(_, n)] => (U!(Nat(*n + 1)), U!(Nat(*n))),
                 [Ident(_, "U"), n] => {
                     let n_o = synthesize_with_type(n, &I("Nat"), env)?;
-                    match n_o {
-                        Nat(n) => (U!(Nat(n + 1)), S("U", vec![n_o])),
-                        _ => throw!(ErrorKind::CannotInferType {
-                            expr: format!("{}", e)
-                        }),
-                    }
-                }
-                // 内建类型
-                [Ident(_, "List" | "Vec" | "Either" | "=" | "Pair"), ..] => {
-                    resolve_type_rule(e, env)?
+                    (U!(add1(&n_o)), U!(n_o))
                 }
                 // nil 和 vecnil 必须附加类型
                 [Ident(_, s)] => throw!(ErrorKind::CannotInferType {
@@ -617,6 +696,11 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     let (_, ty_o) = resolve_type(ty, env)?;
                     let expr_o = synthesize_with_type(expr, &ty_o, env)?;
                     (ty_o, expr_o)
+                }
+                // ListF
+                [Ident(_, "List"), ty_e] => {
+                    let (l, ty_e_o) = resolve_type(ty_e, env)?;
+                    (U!(Nat(l)), bapp!("List", ty_e_o))
                 }
                 // ListI-2
                 [Ident(_, "::"), e, es] => {
@@ -643,6 +727,12 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                         })
                     }
                 }
+                // VecF
+                [Ident(_, "Vec"), ty, len] => {
+                    let (l, ty_o) = resolve_type(ty, env)?;
+                    let len_o = synthesize_with_type(len, &I("Nat"), env)?;
+                    (U!(Nat(l)), bapp!("Vec", ty_o, len_o))
+                }
                 // VecE-2
                 [Ident(_, "tail"), v] => {
                     let (ty_v, v_o) = synthesize(v, env)?;
@@ -656,6 +746,16 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                             given: format!("{}", v),
                         })
                     }
+                }
+                // ΣF-Pair
+                [Ident(_, "Pair"), ty_a, ty_d] => {
+                    let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
+                    // (Pair A D) -> (Σ ((_ : A)) D), introduced a dummy argument
+                    let (l_d, ty_d_o) = resolve_type(ty_d, &env_ext_dummy(env, &ty_a_o))?;
+                    (
+                        U!(Nat(std::cmp::max(l_a, l_d))),
+                        Sigma(Argument::Dummy, Ref::new(ty_a_o), Ref::new(ty_d_o)),
+                    )
                 }
                 // SigmaE-1
                 [Ident(_, "car"), pr] => {
@@ -793,6 +893,15 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                 //         S("ind-Vec", vec![l_o, t_o, m_o.as_ref().clone(), b_o, s_o]),
                 //     )
                 // }
+                // EitherF
+                [Ident(_, "Either"), ty_l, ty_r] => {
+                    let (l_l, ty_l_o) = resolve_type(ty_l, env)?;
+                    let (l_r, ty_r_o) = resolve_type(ty_r, env)?;
+                    (
+                        U!(Nat(std::cmp::max(l_l, l_r))),
+                        bapp!("Either", ty_l_o, ty_r_o),
+                    )
+                }
                 // EitherE
                 // [Ident(_, "ind-Either"), t, m, bl, br] => {
                 //     let (ty_t, t_o) = synthesize(t, env)?;
@@ -815,6 +924,13 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     let t_o = synthesize_with_type(t, &I("Absurd"), env)?;
                     let (_lm, m_o) = resolve_type(m, env)?;
                     (m_o.clone(), S("ind-Absurd", vec![t_o, m_o]))
+                }
+                // EqF
+                [Ident(_, "="), ty, from, to] => {
+                    let (l, ty_o) = resolve_type(ty, env)?;
+                    let from_o = synthesize_with_type(from, &ty_o, env)?;
+                    let to_o = synthesize_with_type(to, &ty_o, env)?;
+                    (U!(Nat(l)), bapp!("=", ty_o, from_o, to_o))
                 }
                 // EqE-1
                 [Ident(_, "replace"), t, m, b] => {
@@ -1198,7 +1314,7 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
     }
 }
 
-/// 判断并计算表达式是一个类型或 U(n)，返回其类型层级，相当于为 U(n) 特化的 synthesize。
+/// 判断并计算表达式是一个类型或 U(n)，返回其类型层级
 /// 改进的第四种 Judgement，见 Figure B.1。
 pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error> {
     tc_log!("resolve `{}` is a type", e);
@@ -1206,194 +1322,66 @@ pub fn resolve_type(e: &ast::Expr, env: &Env) -> Result<(u64, core::Expr), Error
     use ast::Expr::*;
     use core::Expr::*;
 
-    // TODO: 改进 El 规则
-    let ret = match e {
-        // FunF-1, FunF-2
-        PiExpr(sp, args, body) => {
-            match args.as_slice() {
-                // FunF-1
-                [(Id(_, id), ty_a)] => {
-                    let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
-                    let id = (*id).into();
-                    let (l_r, ty_r_o) = resolve_type(body, &env_ext(env, &id, &ty_a_o))?;
-                    let arg_o = if ident_occur_in(0, &ty_r_o) {
-                        Argument::Symbol(id)
-                    } else {
-                        Argument::Dummy
-                    };
-                    (
-                        std::cmp::max(l_a, l_r),
-                        Pi(arg_o, ty_a_o.into(), ty_r_o.into()),
-                    )
-                }
-                // FunF-2
-                [(Id(_, id), ty_a), rargs @ ..] => {
-                    let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
-                    let id = (*id).into();
-                    let (l_r, ty_r_o) = resolve_type(
-                        &PiExpr(*sp, rargs.to_vec(), body.clone()),
-                        &env_ext(env, &id, &ty_a_o),
-                    )?;
-                    let arg_o = if ident_occur_in(0, &ty_r_o) {
-                        Argument::Symbol(id)
-                    } else {
-                        Argument::Dummy
-                    };
-                    (
-                        std::cmp::max(l_a, l_r),
-                        Pi(arg_o, ty_a_o.into(), ty_r_o.into()),
-                    )
-                }
-                _ => unreachable!(),
-            }
-        }
-        // FunF->1, FunF->2
-        ArrowExpr(sp, args) => {
-            match args.as_slice() {
-                // FunF->1, (→ A R) -> (Π ((_ A)) R)
-                [ty_a, ty_r] => {
-                    let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
-                    let (l_r, ty_r_o) = resolve_type(ty_r, &env_ext_dummy(env, &ty_a_o))?;
-                    (
-                        std::cmp::max(l_a, l_r),
-                        Pi(Argument::Dummy, Ref::new(ty_a_o), Ref::new(ty_r_o)),
-                    )
-                }
-                // FunF->2, (→ A B ... R) -> (Π ((_ A)) (→ B ... R))
-                [ty_a, rargs @ ..] => {
-                    let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
-                    // FIXME: right span
-                    let (l_r, ty_r_o) = resolve_type(
-                        &ArrowExpr(*sp, rargs.to_vec()),
-                        &env_ext_dummy(env, &ty_a_o),
-                    )?;
-                    (
-                        std::cmp::max(l_a, l_r),
-                        Pi(Argument::Dummy, Ref::new(ty_a_o), Ref::new(ty_r_o)),
-                    )
-                }
-                _ => unreachable!(),
-            }
-        }
-        // SigmaF-1
-        SigmaExpr(_, _args, _body) => todo!("resolve_type: SigmaExpr"),
+    // 先排除不是类型的项
+    match e {
         NatLit(_, _) | AtomLit(_, _) => {
-            return Err(ErrorKind::NotType(format!("{}", e)).into());
+            throw!(e.span(), ErrorKind::NotType(format!("{}", e)));
         }
         AppExpr(_, args) => {
             match args.as_slice() {
-                // ListF
-                [Ident(_, "List"), ty_e] => {
-                    let (l, ty_e_o) = resolve_type(ty_e, env)?;
-                    (l, bapp!("List", ty_e_o))
+                // 构造子不是类型
+                [Ident(sp, ctr), ..] if PIE_CONSTRUCTORS.contains(ctr) => {
+                    throw!(*sp, ErrorKind::NotType(format!("{}", e)))
                 }
-                // ΣF-Pair
-                [Ident(_, "Pair"), ty_a, ty_d] => {
-                    let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
-                    // (Pair A D) -> (Σ ((_ : A)) D), introduced a dummy argument
-                    let (l_d, ty_d_o) = resolve_type(ty_d, &env_ext_dummy(env, &ty_a_o))?;
-                    (
-                        std::cmp::max(l_a, l_d),
-                        Sigma(Argument::Dummy, Ref::new(ty_a_o), Ref::new(ty_d_o)),
-                    )
-                }
-                // VecF
-                [Ident(_, "Vec"), ty, len] => {
-                    let (l, ty_o) = resolve_type(ty, env)?;
-                    let len_o = synthesize_with_type(len, &I("Nat"), env)?;
-                    (l, bapp!("Vec", ty_o, len_o))
-                }
-                // EitherF
-                [Ident(_, "Either"), ty_l, ty_r] => {
-                    let (l_l, ty_l_o) = resolve_type(ty_l, env)?;
-                    let (l_r, ty_r_o) = resolve_type(ty_r, env)?;
-                    (std::cmp::max(l_l, l_r), bapp!("Either", ty_l_o, ty_r_o))
-                }
-                // EqF
-                [Ident(_, "="), ty, from, to] => {
-                    let (l, ty_o) = resolve_type(ty, env)?;
-                    let from_o = synthesize_with_type(from, &ty_o, env)?;
-                    let to_o = synthesize_with_type(to, &ty_o, env)?;
-                    (l, bapp!("=", ty_o, from_o, to_o))
-                }
-                // UF
-                [Ident(_, "U"), NatLit(_, n)] => (*n + 1, U!(Nat(*n))),
-                [Ident(_, "U"), n] => {
-                    let n_o = synthesize_with_type(n, &I("Nat"), env)?;
-                    match n_o {
-                        Nat(n) => (n + 1, U!(n_o)),
-                        _ => throw!(ErrorKind::CannotInferType {
-                            expr: format!("{}", e)
-                        }),
-                    }
-                }
-                [Ident(_, elm), ..] if PIE_ELIMINATORS.contains(elm) => {
-                    let (ty_o, e_o) = synthesize(e, env)?;
-                    match &ty_o {
-                        S("U", args) => {
-                            no_else!( let [arg] = &args[..] );
-                            if let Nat(n) = arg {
-                                (*n, e_o)
-                            } else {
-                                // FIXME: better error message
-                                throw!(ErrorKind::NotType(format!("{}", e)));
-                            }
-                        }
-                        _ => throw!(ErrorKind::NotType(format!("{}", e))),
-                    }
-                }
-                [Ident(_, ctr), ..] if PIE_CONSTRUCTORS.contains(ctr) => {
-                    throw!(ErrorKind::NotType(format!("{}", e)))
-                }
-                // El
-                _ => (0, synthesize_with_type(e, &U!(), env)?),
+                // ignore other cases
+                _ => {}
             }
         }
-        // 内建单例对象
-        Ident(_, ty @ ("Atom" | "Nat" | "Trivial" | "Absurd")) => (0, I(ast::to_builtin_name(ty))),
-        Ident(_, "U") => (1, U!(Nat(0))),
         // 非类型单例对象
-        Ident(_, e @ ("zero" | "sole" | "nil" | "vecnil")) => {
-            return Err(ErrorKind::NotType(e.to_string()).into());
+        Ident(sp, id @ ("zero" | "sole" | "nil" | "vecnil")) => {
+            throw!(*sp, ErrorKind::NotType(id.to_string()));
         }
-        //Literal, Lambda, Identifier, Apply
-        // El
-        _ => (0, synthesize_with_type(e, &U!(), env)?),
+        // lambda 表达式不是类型
+        LambdaExpr(sp, _, _) => {
+            throw!(*sp, ErrorKind::NotType(e.to_string()));
+        }
+        // ignore other cases
+        _ => {}
+    }
+
+    // El
+    let (ty_o, e_o) = synthesize(e, env)?;
+    let l = match &ty_o {
+        S("U", arg) if let [Nat(n)] = &arg[..] => *n,
+        _ => throw!(e.span(), ErrorKind::NotType(format!("{}", e))),
     };
 
-    tc_log_end!("=> (the (U {}) {})", ret.0, dpp(&ret.1, env));
-    Ok(ret)
+    tc_log_end!("=> (the (U {}) {})", l, dpp(&e_o, env));
+    Ok((l, e_o))
 }
 
 const PIE_CONSTRUCTORS: &[&str] = &["add1", "::", "vec::", "same", "left", "right"];
 
-const PIE_ELIMINATORS: &[&str] = &[
-    "car",
-    "cdr",
-    "which-Nat",
-    "iter-Nat",
-    "rec-Nat",
-    "ind-Nat",
-    "rec-List",
-    "ind-List",
-    "head",
-    "tail",
-    "ind-Vec",
-    "symm",
-    "cong",
-    "replace",
-    "trans",
-    "ind-=",
-    "ind-Either",
-    "ind-Absurd",
-];
-
-// 将 resolve_type 的返回值包装为 (U(n), t_o)
-#[inline]
-fn resolve_type_rule(ty: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), Error> {
-    let (l, t_o) = resolve_type(ty, env)?;
-    Ok((U!(core::Expr::Nat(l)), t_o))
-}
+// const PIE_ELIMINATORS: &[&str] = &[
+//     "car",
+//     "cdr",
+//     "which-Nat",
+//     "iter-Nat",
+//     "rec-Nat",
+//     "ind-Nat",
+//     "rec-List",
+//     "ind-List",
+//     "head",
+//     "tail",
+//     "ind-Vec",
+//     "symm",
+//     "cong",
+//     "replace",
+//     "trans",
+//     "ind-=",
+//     "ind-Either",
+//     "ind-Absurd",
+// ];
 
 /// 检查是否相同类型
 /// 第五种 Judgement，见 Figure B.1。
@@ -1551,7 +1539,12 @@ fn is_expr_check_same(c1: &core::Expr, c2: &core::Expr, ct: &core::Expr, env: &E
             if let Pi(a, ty_a, ty_r) = ct {
                 is_expr_check_same(r1, r2, ty_r, &env_ext_arg(env, a, ty_a))
             } else {
-                is_expr_check_same(r1, r2, &I("ignore"), &env_ext_arg_notype(env, &Argument::Dummy))
+                is_expr_check_same(
+                    r1,
+                    r2,
+                    &I("ignore"),
+                    &env_ext_arg_notype(env, &Argument::Dummy),
+                )
             }
         }
         // builtin function application are considered the same if their function names and arguments are the same
@@ -1603,7 +1596,7 @@ mod unit_tests {
         let out = match stat {
             ast::GlobalStatemant::Expression(e) => do_expression(&e)?,
             ast::GlobalStatemant::CheckSame(_, ty, e1, e2) => {
-                let (_, ty_o2) = resolve_type_rule(&ty, &env).map_err(|e| format!("{}", e))?;
+                let (_, ty_o2) = resolve_type(&ty, &env).map_err(|e| format!("{}", e))?;
                 let e1_o = synthesize_with_type(&e1, &ty_o2, &env).map_err(|e| format!("{}", e))?;
                 let e2_o = synthesize_with_type(&e2, &ty_o2, &env).map_err(|e| format!("{}", e))?;
                 let e1_n = normalize(&e1_o, &env);
@@ -1678,8 +1671,8 @@ mod unit_tests {
         insta::assert_snapshot!(do_synthesize("(the Trivial 0)"), @"Error: Expected Trivial but given Nat");
         insta::assert_snapshot!(do_synthesize("(the Trivial 'a)"), @"Error: Expected Trivial but given Atom");
         insta::assert_snapshot!(do_synthesize("(the Absurd 0)"), @"Error: Expected Absurd but given Nat");
-        insta::assert_snapshot!(do_synthesize("(the 0 'a)"), @"Error: 0 is not a type");
-        insta::assert_snapshot!(do_synthesize("(the sole 'a)"), @"Error: sole is not a type");
+        insta::assert_snapshot!(do_synthesize("(the 0 'a)"), @"Error: 5:6: 0 is not a type");
+        insta::assert_snapshot!(do_synthesize("(the sole 'a)"), @"Error: 5:9: sole is not a type");
         insta::assert_snapshot!(do_synthesize("(the Nat U)"), @"Error: Expected Nat but given (U 1)");
         insta::assert_snapshot!(do_synthesize("(the U 'a)"), @"Error: Expected U but given Atom");
     }
@@ -1728,7 +1721,7 @@ mod unit_tests {
         insta::assert_snapshot!(do_statement("(the (List Atom) nil)"), @"(the (List Atom) nil)");
         insta::assert_snapshot!(do_statement("(the (List Atom) nil)"), @"(the (List Atom) nil)");
         insta::assert_snapshot!(do_statement("(the (List (List Atom)) nil)"), @"(the (List (List Atom)) nil)");
-        insta::assert_snapshot!(do_statement("(the (List 'potato) nil)"), @"Error: 'potato is not a type");
+        insta::assert_snapshot!(do_statement("(the (List 'potato) nil)"), @"Error: 11:18: 'potato is not a type");
         insta::assert_snapshot!(do_statement("(Vec Atom 3)"), @"(the U (Vec Atom 3))");
         insta::assert_snapshot!(do_statement("(the (Vec Atom 0) vecnil)"), @"(the (Vec Atom 0) vecnil)");
         insta::assert_snapshot!(do_statement("(the (Vec Atom 1) (vec:: 'oyster vecnil))"), @"(the (Vec Atom 1) (vec:: 'oyster vecnil))");
