@@ -1,0 +1,12 @@
+---
+source: pielang/tests/test.rs
+input_file: pielang/tests/snapshots/ch10.pie
+---
+(the (Σ ((A U)) A) (cons (→ Nat Nat) (λ (j) (add1 (add1 (add1 (add1 (add1 (add1 (add1 j))))))))))
+(the (Σ ((food Atom)) (= (List Atom) (:: food nil) (:: 'toast nil))) (cons 'toast (same (:: 'toast nil))))
+(the (Σ ((l Nat)) (Vec Atom l)) (cons 2 (vec:: 'toast-and-jam (vec:: 'tea vecnil))))
+(the (Σ ((es (List Atom))) (= (List Atom) es (rec-List (the (List Atom) es) nil (λ (e es reversees) (rec-List (the (List Atom) reversees) (:: e nil) (λ (e es almost) (:: e almost))))))) (cons nil (same nil)))
+(the (Σ ((es (List Atom))) (= (List Atom) es (rec-List (the (List Atom) es) nil (λ (e es reversees) (rec-List (the (List Atom) reversees) (:: e nil) (λ (e es almost) (:: e almost))))))) (cons (:: 'bialy (:: 'schmear (:: 'bialy nil))) (same (:: 'bialy (:: 'schmear (:: 'bialy nil))))))
+(the (Vec Atom 0) vecnil)
+(the (Vec Atom 3) (vec:: 'kale (vec:: 'kale (vec:: 'kale vecnil))))
+(the (Vec Atom 5) (vec:: 'cooked (vec:: 'eaten (vec:: 'tried-cleaning (vec:: 'understood (vec:: 'slept vecnil))))))

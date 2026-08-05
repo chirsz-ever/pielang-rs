@@ -247,7 +247,7 @@ impl std::ops::Drop for IndentGuard {
     }
 }
 
-/// 所有自由变量的 dbi 值加上一个数, depth 表示当前作用域深度
+/// depth 表示当前作用域深度
 /// TODO: 单元测试
 fn shift_dbi_d(e: &core::Expr, inc: usize, depth: usize) -> core::Expr {
     use core::Expr::*;
@@ -287,6 +287,7 @@ fn shift_dbi_d(e: &core::Expr, inc: usize, depth: usize) -> core::Expr {
     }
 }
 
+/// 所有自由变量的 dbi 值加上一个数
 fn shift_dbi(e: &core::Expr, inc: usize) -> core::Expr {
     shift_dbi_d(e, inc, 0)
 }
@@ -409,6 +410,9 @@ pub fn synthesize_with_type(
     use ast::Expr::*;
     use ast::Id;
     use core::Expr::*;
+
+    // ch10: check vecnil is a (mot ..)
+    let ty = &normalize(ty, env);
 
     let ret = match (e, ty) {
         // 简单情况优化
@@ -884,38 +888,54 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     )
                 }
                 // ListE-1
+                // (rec-List (the (List E) t) b s)
+                // TODO: 搞清该怎么改
                 [Ident(_, "rec-List"), t, b, s] => {
                     let (ty_t, t_o) = synthesize(t, env)?;
                     try_match! { let S("List", [ty_e]) = &ty_t; env }
                     let (ty_b, b_o) = synthesize(b, env)?;
                     let ty_b = Ref::new(ty_b);
-                    let ty_s = arrow!(ty_e.clone(), ty_t, ref ty_b, ref ty_b,);
+                    let ty_s = arrow!(ty_e.clone(), ty_t.clone(), ref ty_b, ref ty_b,);
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
-                    // FIXME: TLT 中需要多一层 the 表达式
+                    let t_o = S("the", vec![ty_t, t_o]);
                     (ty_b.as_ref().clone(), S("rec-List", vec![t_o, b_o, s_o]))
                 }
                 // ListE-2
-                // [Ident(_, "ind-List"), t, m, b, s] => {
-                //     let (ty_t, t_o) = synthesize(t, env)?;
-                //     try_match! { let S("List", [ty_e]) = &ty_t; env }
-                //     let ty_m = pi!(ty_t.clone(), U!());
-                //     let m_o = synthesize_with_type(m, &ty_m, env)?;
-                //     let m_o = Ref::new(m_o);
-                //     // FIXME: 在此需要编译期计算
-                //     let ty_b = app!(ref m_o, bty::nil());
-                //     let b_o = synthesize_with_type(b, &ty_b, env)?;
-                //     let ty_s = pi!(
-                //         ty_e.clone(),
-                //         ty_t,
-                //         app!(ref m_o, Identifier(0)),
-                //         app!(ref m_o, bapp!("::", Identifier(2), Identifier(1)))
-                //     );
-                //     let s_o = synthesize_with_type(s, &ty_s, env)?;
-                //     (
-                //         app!(ref m_o, t_o.clone()),
-                //         S("ind-List", vec![t_o, m_o.as_ref().clone(), b_o, s_o]),
-                //     )
-                // }
+                [Ident(_, "ind-List"), t, m, b, s] => {
+                    let (ty_t, t_o) = synthesize(t, env)?;
+                    try_match! { let S("List", [ty_e]) = &ty_t; env }
+                    // m : (List E) -> U
+                    let ty_m = arrow!(ty_t.clone(), U!());
+                    let m_o = synthesize_with_type(m, &ty_m, env)?;
+                    let m_o = Ref::new(m_o);
+                    let ty_b = app!(ref m_o, I("nil"));
+                    let b_o = synthesize_with_type(b, &ty_b, env)?;
+                    // s : (x : E) -> (xs : List E) -> (m xs) -> (m (:: x xs))
+                    let ty_s = Pi(
+                        Argument::Symbol("x".into()),
+                        ty_e.clone().into(),
+                        Pi(
+                            Argument::Symbol("xs".into()),
+                            shift_dbi(&ty_t, 1).into(),
+                            Pi(
+                                Argument::Dummy,
+                                app!(shift_dbi(&m_o, 2), Identifier("xs".into(), 0)).into(),
+                                app!(
+                                    shift_dbi(&m_o, 3),
+                                    S(
+                                        "::",
+                                        vec![Identifier("x".into(), 2), Identifier("xs".into(), 1)]
+                                    )
+                                ).into(),
+                            ).into(),
+                        ).into(),
+                    );
+                    let s_o = synthesize_with_type(s, &ty_s, env)?;
+                    (
+                        app!(ref m_o, t_o.clone()),
+                        S("ind-List", vec![t_o, m_o.as_ref().clone(), b_o, s_o]),
+                    )
+                }
                 // VecE-3
                 // [Ident(_, "ind-Vec"), l, t, m, b, s] => {
                 //     let l_o = synthesize_with_type(l, &I("Nat"), env)?;
@@ -1266,17 +1286,34 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
         // ListSame-r-Lι1, ListSame-r-Lι2
         S("rec-List", args) => {
             no_else!( let [t, b, s] = &args[..] );
-            let (c1, t_o) = norm!(t, env);
+            no_else!( let (c1, S("the", t_args)) = norm!(t, env) );
+            no_else!( let [ty_t, t_o] = &t_args[..] );
             let (c2, b_o) = norm!(b, env);
             let (c3, s_o) = norm!(s, env);
             if let I("nil") = &t_o {
                 Some(b_o)
             } else if let S("::", cons_args) = &t_o {
                 no_else!( let [e, es] = &cons_args[..] );
-                let rec_es = S("rec-List", vec![es.clone(), b_o, s_o.clone()]);
+                let rec_es = S("rec-List", vec![S("the", vec![ty_t.clone(), es.clone()]), b_o, s_o.clone()]);
                 Some(app!(s_o, e.clone(), es.clone(), rec_es))
             } else {
-                some_if!(c1 || c2 || c3 => S("rec-List", vec![t_o, b_o, s_o]))
+                some_if!(c1 || c2 || c3 => S("rec-List", vec![S("the", t_args), b_o, s_o]))
+            }
+        }
+        // ListSame-i-Lι1, ListSame-i-Lι2
+        S("ind-List", args) => {
+            no_else!{ let [t, m, b, s] = &args[..] };
+            let (c1, t) = norm!(t, env);
+            let (c2, m) = norm!(m, env);
+            let (c3, b) = norm!(b, env);
+            let (c4, s) = norm!(s, env);
+            if let I("nil") = t {
+                Some(b)
+            } else if let S("::", t_args) = t {
+                no_else!{ let [e, es] = &t_args[..] };
+                Some(app!(s.clone(), e.clone(), es.clone(), S("ind-List", vec![es.clone(), m, b, s])))
+            } else {
+                some_if!( c1 || c2 || c3 || c4 => S("ind-List", vec![t, m, b, s]))
             }
         }
         // NatSame-in-Nι1, NatSame-in-Nι2
@@ -1321,7 +1358,25 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
                 some_if!(c => S("tail", vec![v_o]))
             }
         }
-        // TODO: ind-Vec, VecSame-i-Vι1, VecSame-i-Vι2
+        // VecSame-i-Vι1, VecSame-i-Vι2
+        // TODO: test
+        S("ind-Vec", args) => {
+            no_else!{ let [l, t, m, b, s] = &args[..] };
+            let (c1, l) = norm!(l, env);
+            let (c2, t) = norm!(t, env);
+            let (c3, m) = norm!(m, env);
+            let (c4, b) = norm!(b, env);
+            let (c5, s) = norm!(s, env);
+            if matches!(l, Nat(0)) || matches!(t, I("vecnil")) {
+                Some(b)
+            } else if is_add1(&l) && let S("vec::", t_args) = t {
+                let l1 = sub1(&l);
+                no_else!{ let [e, es] = &t_args[..] };
+                Some(app!(s.clone(), l1.clone(), e.clone(), es.clone(), S("ind-Vec", vec![l1, es.clone(), m, b, s])))
+            } else {
+                some_if!( c1 || c2 || c3 || c4 || c5 => S("ind-Vec", vec![l, t, m, b, s]))
+            }
+        }
         // EqSame-rι, (replace (same e) m b) -> b
         S("replace", args) => {
             no_else!( let [t, m, b] = &args[..] );
@@ -1454,7 +1509,8 @@ const PIE_TYPE_CONSTRUCTORS: &[&str] = &["U", "List", "Vec", "Either", "="];
 
 /// 检查是否相同类型
 /// 第五种 Judgement，见 Figure B.1。
-fn type_check_same(ty1_i: &core::Expr, ty2_i: &core::Expr, env: &Env) -> Result<(), Error> {
+fn type_check_same(ty1: &core::Expr, ty2: &core::Expr, env: &Env) -> Result<(), Error> {
+    let (ty1_i, ty2_i) = (ty1, ty2);
     tc_log!(
         "check `{}` and `{}` are the same type",
         dpp(ty1_i, env),
@@ -1670,15 +1726,23 @@ pub fn expr_check_same(
                     expr_check_same(es1, es2, ct, env)?;
                 }
                 // ListSame-rec-List
-                // ("rec-List", [t1, b1, s1], [t2, b2, s2]) => {
-                //     // expr_check_same(t1, t2, ct, env)?;
-                //     // expr_check_same(b1, b2, ct, env)?;
+                ("rec-List", [t1, b1, s1], [t2, b2, s2]) => {
+                    no_else! { let S("the", args1) = t1 };
+                    no_else! { let S("the", args2) = t2 };
+                    no_else! { let [ty_t1, t1] = &args1[..] };
+                    no_else! { let [ty_t2, t2] = &args2[..] };
 
-                //     // // s : E -> (List E) -> B -> B
-                //     // // let ty_s = arrow!(ty_e.clone(), ty_t, ref ty_b, ref ty_b);
-                //     // expr_check_same(s1, s2, &ty_s, env)?;
-                //     todo!()
-                // }
+                    type_check_same(ty_t1, ty_t2, env)?;
+                    no_else!( let S("List", args) = ty_t1 );
+                    no_else!( let [ty_e] = &args[..] );
+                    expr_check_same(t1, t2, ty_t1, env)?;
+                    expr_check_same(b1, b2, &I("ignore"), env)?;
+
+                    // s : E -> (List E) -> B -> B
+                    let ty_b = ct;
+                    let ty_s = arrow!(ty_e.clone(), ty_t1.clone(), ty_b.clone(), ty_b.clone());
+                    expr_check_same(s1, s2, &ty_s, env)?;
+                }
                 // ListSame-ind-List
                 // ("ind-List", [t1, m1, b1, s1], [t2, m2, b2, s2]) => {
                 //     todo!()

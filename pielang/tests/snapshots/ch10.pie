@@ -1,0 +1,168 @@
+#lang pie
+
+(claim + (→ Nat Nat Nat))
+(define +
+  (λ (n j)
+    (iter-Nat n
+      j
+      (λ (k) (add1 k)))))
+
+(the (Σ ((A U)) A) (cons (→ Nat Nat) (+ 7)))
+
+(the
+(Σ ((food Atom))
+  (= (List Atom)
+    (:: food nil)
+    (:: 'toast nil)))
+(cons 'toast
+  (same (:: 'toast nil)))  
+)
+
+(the
+(Σ ((l Nat))
+  (Vec Atom l))
+(cons 2
+  (vec:: 'toast-and-jam
+    (vec:: 'tea vecnil)))
+)
+
+(claim snoc
+  (Π ((E U))
+    (→ (List E) E
+      (List E))))
+(define snoc
+  (λ (E)
+    (λ (start e)
+      (rec-List start
+        (:: e nil)
+        (λ (e es almost) (:: e almost))))))
+(claim reverse
+  (Π ((E U))
+    (→ (List E)
+      (List E))))
+(claim step-reverse
+  (Π ((E U))
+    (→ E (List E) (List E)
+      (List E))))
+(define step-reverse
+  (λ (E)
+    (λ (e es reversees)
+      (snoc E reversees e))))
+(define reverse
+  (λ (E)
+    (λ (es)
+      (rec-List es
+        (the (List E) nil)
+        (step-reverse E)))))
+
+(the
+(Σ ((es (List Atom)))
+  (= (List Atom)
+    es
+    (reverse Atom es)))
+(cons nil (same nil))
+)
+
+(the
+(Σ ((es (List Atom)))
+  (= (List Atom)
+    es
+    (reverse Atom es)))
+(cons (:: 'bialy
+        (:: 'schmear
+          (:: 'bialy nil)))
+  (same (:: 'bialy
+          (:: 'schmear
+            (:: 'bialy nil)))))
+)
+
+(claim replicate
+  (Π ((E U)
+      (l Nat))
+    (→ E (Vec E l))))
+(claim mot-replicate
+  (→ U Nat U))
+(define mot-replicate
+  (λ (E k)
+    (Vec E k)))
+(claim step-replicate
+  (Π ((E U)
+      (e E)
+      (l-1 Nat))
+    (→ (mot-replicate E l-1)
+      (mot-replicate E (add1 l-1)))))
+(define step-replicate
+  (λ (E e l-1)
+    (λ (replicatel-1)
+      (vec:: e replicatel-1))))
+(define replicate
+  (λ (E l)
+    (λ (e)
+      (ind-Nat l
+        (mot-replicate E)
+        vecnil
+        (step-replicate E e)))))
+
+(replicate Atom 0 'kale) ; vecnil
+(replicate Atom 3 'kale) ; (vec:: 'kale (vec:: 'kale (vec:: 'kale vecnil)))
+
+(claim length
+  (Π ((E U))
+    (→ (List E)
+      Nat)))
+(claim step-length
+  (Π ((E U))
+    (→ E (List E) Nat
+      Nat)))
+(define step-length
+  (λ (E)
+    (λ (e es lengthes)
+      (add1 lengthes))))
+(define length
+  (λ (E)
+    (λ (es)
+      (rec-List es
+        0
+        (step-length E)))))
+
+(claim list→vec
+  (Π ((E U)
+      (es (List E)))
+    (Vec E (length E es))))
+
+(claim mot-list→vec
+  (Π ((E U))
+    (→ (List E) U)))
+(define mot-list→vec
+  (λ (E)
+    (λ (es)
+      (Vec E (length E es)))))
+
+(claim step-list→vec
+  (Π ((E U)
+      (e E)
+      (es (List E)))
+    (→ (mot-list→vec E es)
+      (mot-list→vec E (:: e es)))))
+(define step-list→vec
+  (λ (E e es)
+    (λ (list→veces)
+      (vec:: e list→veces))))
+
+(define list→vec
+  (λ (E es)
+    (ind-List es
+      (mot-list→vec E)
+      vecnil
+      (step-list→vec E))))
+
+(claim expectations
+  (List Atom))
+(define expectations
+  (:: 'cooked
+    (:: 'eaten
+      (:: 'tried-cleaning
+        (:: 'understood
+          (:: 'slept nil))))))
+
+(list→vec Atom expectations) ; (vec:: 'cooked (vec:: 'eaten (vec:: 'tried-cleaning (vec:: 'understood (vec:: 'slept vecnil)))))

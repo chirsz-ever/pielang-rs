@@ -2,7 +2,7 @@
 source: pielang/tests/test.rs
 input_file: pielang/tests/snapshots/ch5.pie
 ---
-(the (→ (List Atom) Nat) (λ (es) (rec-List es 0 (λ (e es lengthes) (add1 lengthes)))))
+(the (→ (List Atom) Nat) (λ (es) (rec-List (the (List Atom) es) 0 (λ (e es lengthes) (add1 lengthes)))))
 (the Nat 5)
 (the Nat 2)
 (the Nat 5)
