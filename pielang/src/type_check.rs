@@ -426,8 +426,9 @@ pub fn synthesize_with_type(
             I(bn(ty))
         }
         // FunI-1, FunI-2
-        (LambdaExpr(sp, args, r), Pi(_pi_arg, ty_arg, ty_ret)) => {
-            no_else! { let [Id(_, arg), rargs @ ..] = &args[..] }
+        (LambdaExpr(sp, args, r), Pi(_pi_arg, ty_arg, ty_ret))
+            if let [Id(_, arg), rargs @ ..] = &args[..] =>
+        {
             let arg = (*arg).into();
             if rargs.is_empty() {
                 // FunI-1
@@ -445,8 +446,7 @@ pub fn synthesize_with_type(
             }
         }
         // ΣI
-        (AppExpr(_, args), Sigma(arg, ty_a, ty_d)) if let Ident(_, "cons") = args[0] => {
-            no_else! { let [_, a, d] = &**args }
+        (AppExpr(_, args), Sigma(arg, ty_a, ty_d)) if let [Ident(_, "cons"), a, d] = &args[..] => {
             let a_o = synthesize_with_type(a, ty_a, env)?;
             let d_o = synthesize_with_type(d, &substitute_beta_arg(ty_d, arg, &a_o, env), env)?;
             S("cons", vec![a_o, d_o])
@@ -454,8 +454,7 @@ pub fn synthesize_with_type(
         // ListI-1
         (Ident(_, "nil"), S("List", _ty_args)) => I("nil"),
         // VecI-1
-        (Ident(sp, "vecnil"), S("Vec", ty_args)) => {
-            no_else! { let [_ty_e, l] = &ty_args[..] }
+        (Ident(sp, "vecnil"), S("Vec", ty_args)) if let [_ty_e, l] = &ty_args[..] => {
             if let Nat(0) = l {
                 I("vecnil")
             } else {
@@ -542,10 +541,7 @@ fn sub1(e: &core::Expr) -> core::Expr {
             debug_assert_ne!(*n, 0);
             Nat(n - 1)
         }
-        S("add1", args) => {
-            no_else!( let [n] = &**args );
-            n.clone()
-        }
+        S("add1", args) if let [n] = &**args => n.clone(),
         _ => unreachable!(),
     }
 }
@@ -926,9 +922,12 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                                         "::",
                                         vec![Identifier("x".into(), 2), Identifier("xs".into(), 1)]
                                     )
-                                ).into(),
-                            ).into(),
-                        ).into(),
+                                )
+                                .into(),
+                            )
+                            .into(),
+                        )
+                        .into(),
                     );
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     (
@@ -1191,237 +1190,247 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
             some_if!(c1 || c2 => Sigma(arg.clone(), ty_a_o.into(), ty_d_o.into()))
         }
         // NatI-4?
-        S("add1", args) => {
-            no_else!( let [n] = &args[..] );
-            let (c, n_o) = norm!(n, env);
-            match n_o {
-                Nat(v) => Some(Nat(v + 1)),
-                n_o => some_if!(c => S("add1", vec![n_o])),
-            }
-        }
-        // ΣSame-ι1, (car (cons a d)) -> a
-        S("car", args) => {
-            no_else!( let [p] = &args[..] );
-            let (c, p_o) = norm!(p, env);
-            if let S("cons", cons_args) = &p_o {
-                no_else!( let [a, _d] = &cons_args[..] );
-                Some(a.clone())
-            } else {
-                some_if!(c => S("car", vec![p_o]))
-            }
-        }
-        // ΣSame-ι2, (cdr (cons a d)) -> d
-        S("cdr", args) => {
-            no_else!( let [p] = &args[..] );
-            let (c, p_o) = norm!(p, env);
-            if let S("cons", cons_args) = &p_o {
-                no_else!( let [_a, d] = &cons_args[..] );
-                Some(d.clone())
-            } else {
-                some_if!(c => S("cdr", vec![p_o]))
-            }
-        }
-        // ΣSame-η, (cons (car p) (cdr p)) -> p
-        // FIXME: expr_check_same 不需要 ct 参数?
-        S("cons", args) => {
-            no_else!( let [a, d] = &args[..] );
-            let (c1, a_o) = norm!(a, env);
-            let (c2, d_o) = norm!(d, env);
-            if let S("car", p1) = &a_o
-                && let S("cdr", p2) = &d_o
-                && expr_check_same(&p1[0], &p2[0], &I("ignore"), env).is_ok()
-            {
-                Some(p1[0].clone())
-            } else {
-                some_if!(c1 || c2 => S("cons", vec![a_o, d_o]))
-            }
-        }
-        // NatSame-w-Nι1, NatSame-w-Nι2
-        S("which-Nat", args) => {
-            no_else!( let [t, b, s] = &args[..] );
-            let (c1, t_o) = norm!(t, env);
-            let (c2, b_o) = norm!(b, env);
-            let (c3, s_o) = norm!(s, env);
-            if matches!(&t_o, Nat(0)) {
-                Some(b_o)
-            } else if is_add1(&t_o) {
-                let n = sub1(&t_o);
-                Some(App(s_o.into(), n.into()))
-            } else {
-                some_if!(c1 || c2 || c3 => S("which-Nat", vec![t_o, b_o, s_o]))
-            }
-        }
-        // NatSame-it-Nι1, NatSame-it-Nι2
-        S("iter-Nat", args) => {
-            no_else!( let [t, b, s] = &args[..] );
-            let (c1, t_o) = norm!(t, env);
-            let (c2, b_o) = norm!(b, env);
-            let (c3, s_o) = norm!(s, env);
-            if matches!(&t_o, Nat(0)) {
-                Some(b_o)
-            } else if is_add1(&t_o) {
-                let n_sub1 = sub1(&t_o);
-                let iter_sub1 = S("iter-Nat", vec![n_sub1, b_o.clone(), s_o.clone()]);
-                Some(App(s_o.into(), iter_sub1.into()))
-            } else {
-                some_if!(c1 || c2 || c3 => S("iter-Nat", vec![t_o, b_o, s_o]))
-            }
-        }
-        // NatSame-r-Nι1, NatSame-r-Nι2
-        S("rec-Nat", args) => {
-            no_else!( let [t, b, s] = &args[..] );
-            let (c1, t_o) = norm!(t, env);
-            let (c2, b_o) = norm!(b, env);
-            let (c3, s_o) = norm!(s, env);
-            if matches!(&t_o, Nat(0)) {
-                Some(b_o)
-            } else if is_add1(&t_o) {
-                let n_sub1 = sub1(&t_o);
-                let rec_sub1 = S("rec-Nat", vec![n_sub1.clone(), b_o.clone(), s_o.clone()]);
-                Some(app!(s_o, n_sub1, rec_sub1))
-            } else {
-                some_if!(c1 || c2 || c3 => S("rec-Nat", vec![t_o, b_o, s_o]))
-            }
-        }
-        // ListSame-r-Lι1, ListSame-r-Lι2
-        S("rec-List", args) => {
-            no_else!( let [t, b, s] = &args[..] );
-            no_else!( let (c1, S("the", t_args)) = norm!(t, env) );
-            no_else!( let [ty_t, t_o] = &t_args[..] );
-            let (c2, b_o) = norm!(b, env);
-            let (c3, s_o) = norm!(s, env);
-            if let I("nil") = &t_o {
-                Some(b_o)
-            } else if let S("::", cons_args) = &t_o {
-                no_else!( let [e, es] = &cons_args[..] );
-                let rec_es = S("rec-List", vec![S("the", vec![ty_t.clone(), es.clone()]), b_o, s_o.clone()]);
-                Some(app!(s_o, e.clone(), es.clone(), rec_es))
-            } else {
-                some_if!(c1 || c2 || c3 => S("rec-List", vec![S("the", t_args), b_o, s_o]))
-            }
-        }
-        // ListSame-i-Lι1, ListSame-i-Lι2
-        S("ind-List", args) => {
-            no_else!{ let [t, m, b, s] = &args[..] };
-            let (c1, t) = norm!(t, env);
-            let (c2, m) = norm!(m, env);
-            let (c3, b) = norm!(b, env);
-            let (c4, s) = norm!(s, env);
-            if let I("nil") = t {
-                Some(b)
-            } else if let S("::", t_args) = t {
-                no_else!{ let [e, es] = &t_args[..] };
-                Some(app!(s.clone(), e.clone(), es.clone(), S("ind-List", vec![es.clone(), m, b, s])))
-            } else {
-                some_if!( c1 || c2 || c3 || c4 => S("ind-List", vec![t, m, b, s]))
-            }
-        }
-        // NatSame-in-Nι1, NatSame-in-Nι2
-        S("ind-Nat", args) => {
-            no_else!( let [t, m, b, s] = &args[..] );
-            let (c1, t_o) = norm!(t, env);
-            let (c2, m_o) = norm!(m, env);
-            let (c3, b_o) = norm!(b, env);
-            let (c4, s_o) = norm!(s, env);
-            match &t_o {
-                Nat(0) => Some(b_o),
-                Nat(_) | S("add1", _) => {
-                    let n_sub1 = sub1(&t_o);
-                    let ind_sub1 = S(
-                        "ind-Nat",
-                        vec![n_sub1.clone(), m_o.clone(), b_o.clone(), s_o.clone()],
-                    );
-                    Some(app!(s_o, n_sub1, ind_sub1))
+        S(bf, args) => match (*bf, args.as_slice()) {
+            ("add1", [n]) => {
+                let (c, n_o) = norm!(n, env);
+                match n_o {
+                    Nat(v) => Some(Nat(v + 1)),
+                    n_o => some_if!(c => S("add1", vec![n_o])),
                 }
-                _ => some_if!(c1 || c2 || c3 || c4 => S("ind-Nat", vec![t_o, m_o, b_o, s_o])),
             }
-        }
-        // VecSame-hι
-        S("head", args) => {
-            no_else!( let [v] = &args[..] );
-            let (c, v_o) = norm!(v, env);
-            if let S("vec::", vec_args) = &v_o {
-                no_else!( let [e, _es] = &vec_args[..] );
-                Some(e.clone())
-            } else {
-                some_if!(c => S("head", vec![v_o]))
+            // ΣSame-ι1, (car (cons a d)) -> a
+            ("car", [p]) => {
+                let (c, p_o) = norm!(p, env);
+                if let S("cons", cons_args) = &p_o
+                    && let [a, _d] = &cons_args[..]
+                {
+                    Some(a.clone())
+                } else {
+                    some_if!(c => S("car", vec![p_o]))
+                }
             }
-        }
-        // VecSame-tι
-        S("tail", args) => {
-            no_else!( let [v] = &args[..] );
-            let (c, v_o) = norm!(v, env);
-            if let S("vec::", vec_args) = &v_o {
-                no_else!( let [_e, es] = &vec_args[..] );
-                Some(es.clone())
-            } else {
-                some_if!(c => S("tail", vec![v_o]))
+            // ΣSame-ι2, (cdr (cons a d)) -> d
+            ("cdr", [p]) => {
+                let (c, p_o) = norm!(p, env);
+                if let S("cons", cons_args) = &p_o
+                    && let [_a, d] = &cons_args[..]
+                {
+                    Some(d.clone())
+                } else {
+                    some_if!(c => S("cdr", vec![p_o]))
+                }
             }
-        }
-        // VecSame-i-Vι1, VecSame-i-Vι2
-        // TODO: test
-        S("ind-Vec", args) => {
-            no_else!{ let [l, t, m, b, s] = &args[..] };
-            let (c1, l) = norm!(l, env);
-            let (c2, t) = norm!(t, env);
-            let (c3, m) = norm!(m, env);
-            let (c4, b) = norm!(b, env);
-            let (c5, s) = norm!(s, env);
-            if matches!(l, Nat(0)) || matches!(t, I("vecnil")) {
-                Some(b)
-            } else if is_add1(&l) && let S("vec::", t_args) = t {
-                let l1 = sub1(&l);
-                no_else!{ let [e, es] = &t_args[..] };
-                Some(app!(s.clone(), l1.clone(), e.clone(), es.clone(), S("ind-Vec", vec![l1, es.clone(), m, b, s])))
-            } else {
-                some_if!( c1 || c2 || c3 || c4 || c5 => S("ind-Vec", vec![l, t, m, b, s]))
+            // ΣSame-η, (cons (car p) (cdr p)) -> p
+            // FIXME: expr_check_same 不需要 ct 参数?
+            ("cons", [a, d]) => {
+                let (c1, a_o) = norm!(a, env);
+                let (c2, d_o) = norm!(d, env);
+                if let S("car", p1) = &a_o
+                    && let S("cdr", p2) = &d_o
+                    && expr_check_same(&p1[0], &p2[0], &I("ignore"), env).is_ok()
+                {
+                    Some(p1[0].clone())
+                } else {
+                    some_if!(c1 || c2 => S("cons", vec![a_o, d_o]))
+                }
             }
-        }
-        // EqSame-rι, (replace (same e) m b) -> b
-        S("replace", args) => {
-            no_else!( let [t, m, b] = &args[..] );
-            let (c1, t_o) = norm!(t, env);
-            let (c2, m_o) = norm!(m, env);
-            let (c3, b_o) = norm!(b, env);
-            if let S("same", _same_args) = &t_o {
-                // no_else!( let [e] = &same_args[..] );
-                Some(b_o)
-            } else {
-                some_if!(c1 || c2 || c3 => S("replace", vec![t_o, m_o, b_o]))
+            // NatSame-w-Nι1, NatSame-w-Nι2
+            ("which-Nat", [t, b, s]) => {
+                let (c1, t_o) = norm!(t, env);
+                let (c2, b_o) = norm!(b, env);
+                let (c3, s_o) = norm!(s, env);
+                if matches!(&t_o, Nat(0)) {
+                    Some(b_o)
+                } else if is_add1(&t_o) {
+                    let n = sub1(&t_o);
+                    Some(App(s_o.into(), n.into()))
+                } else {
+                    some_if!(c1 || c2 || c3 => S("which-Nat", vec![t_o, b_o, s_o]))
+                }
             }
-        }
-        // EqSame-cι, (cong (same e) f) -> (same (f e))
-        S("cong", args) => {
-            no_else!( let [ty_x, t, f] = &args[..] );
-            let (c1, ty_x_o) = norm!(ty_x, env);
-            let (c2, t_o) = norm!(t, env);
-            let (c3, f_o) = norm!(f, env);
-            if let S("same", same_args) = &t_o {
-                no_else!( let [e] = &same_args[..] );
-                Some(S("same", vec![app!(f_o, e.clone())]))
-            } else {
-                some_if!(c1 || c2 || c3 => S("cong", vec![ty_x_o, t_o, f_o]))
+            // NatSame-it-Nι1, NatSame-it-Nι2
+            ("iter-Nat", [t, b, s]) => {
+                let (c1, t_o) = norm!(t, env);
+                let (c2, b_o) = norm!(b, env);
+                let (c3, s_o) = norm!(s, env);
+                if matches!(&t_o, Nat(0)) {
+                    Some(b_o)
+                } else if is_add1(&t_o) {
+                    let n_sub1 = sub1(&t_o);
+                    let iter_sub1 = S("iter-Nat", vec![n_sub1, b_o.clone(), s_o.clone()]);
+                    Some(App(s_o.into(), iter_sub1.into()))
+                } else {
+                    some_if!(c1 || c2 || c3 => S("iter-Nat", vec![t_o, b_o, s_o]))
+                }
             }
-        }
-        // EqSame-sι, (symm (same e)) -> (same e)
-        S("symm", args) => {
-            no_else!( let [t] = &args[..] );
-            let (c, t_o) = norm!(t, env);
-            if let S("same", same_args) = &t_o {
-                no_else!( let [e] = &same_args[..] );
-                Some(S("same", vec![e.clone()]))
-            } else {
-                some_if!(c => S("symm", vec![t_o]))
+            // NatSame-r-Nι1, NatSame-r-Nι2
+            ("rec-Nat", [t, b, s]) => {
+                let (c1, t_o) = norm!(t, env);
+                let (c2, b_o) = norm!(b, env);
+                let (c3, s_o) = norm!(s, env);
+                if matches!(&t_o, Nat(0)) {
+                    Some(b_o)
+                } else if is_add1(&t_o) {
+                    let n_sub1 = sub1(&t_o);
+                    let rec_sub1 = S("rec-Nat", vec![n_sub1.clone(), b_o.clone(), s_o.clone()]);
+                    Some(app!(s_o, n_sub1, rec_sub1))
+                } else {
+                    some_if!(c1 || c2 || c3 => S("rec-Nat", vec![t_o, b_o, s_o]))
+                }
             }
-        }
-        S(bf, args) => {
-            let results: Vec<_> = args.iter().map(|a| norm!(a, env)).collect();
-            if results.iter().any(|(c, _)| *c) {
-                Some(S(bf, results.into_iter().map(|(_, v)| v).collect()))
-            } else {
-                None
+            // ListSame-r-Lι1, ListSame-r-Lι2
+            ("rec-List", [t, b, s]) => {
+                no_else!( let (c1, S("the", t_args)) = norm!(t, env) );
+                no_else!( let [ty_t, t_o] = &t_args[..] );
+                let (c2, b_o) = norm!(b, env);
+                let (c3, s_o) = norm!(s, env);
+                if let I("nil") = &t_o {
+                    Some(b_o)
+                } else if let S("::", args) = &t_o
+                    && let [e, es] = &args[..]
+                {
+                    let rec_es = S(
+                        "rec-List",
+                        vec![S("the", vec![ty_t.clone(), es.clone()]), b_o, s_o.clone()],
+                    );
+                    Some(app!(s_o, e.clone(), es.clone(), rec_es))
+                } else {
+                    some_if!(c1 || c2 || c3 => S("rec-List", vec![S("the", t_args), b_o, s_o]))
+                }
             }
-        }
+            // ListSame-i-Lι1, ListSame-i-Lι2
+            ("ind-List", [t, m, b, s]) => {
+                let (c1, t) = norm!(t, env);
+                let (c2, m) = norm!(m, env);
+                let (c3, b) = norm!(b, env);
+                let (c4, s) = norm!(s, env);
+                if let I("nil") = t {
+                    Some(b)
+                } else if let S("::", ref t_args) = t
+                    && let [e, es] = &t_args[..]
+                {
+                    Some(app!(
+                        s.clone(),
+                        e.clone(),
+                        es.clone(),
+                        S("ind-List", vec![es.clone(), m, b, s])
+                    ))
+                } else {
+                    some_if!( c1 || c2 || c3 || c4 => S("ind-List", vec![t, m, b, s]))
+                }
+            }
+            // NatSame-in-Nι1, NatSame-in-Nι2
+            ("ind-Nat", [t, m, b, s]) => {
+                let (c1, t_o) = norm!(t, env);
+                let (c2, m_o) = norm!(m, env);
+                let (c3, b_o) = norm!(b, env);
+                let (c4, s_o) = norm!(s, env);
+                match &t_o {
+                    Nat(0) => Some(b_o),
+                    Nat(_) | S("add1", _) => {
+                        let n_sub1 = sub1(&t_o);
+                        let ind_sub1 = S(
+                            "ind-Nat",
+                            vec![n_sub1.clone(), m_o.clone(), b_o.clone(), s_o.clone()],
+                        );
+                        Some(app!(s_o, n_sub1, ind_sub1))
+                    }
+                    _ => some_if!(c1 || c2 || c3 || c4 => S("ind-Nat", vec![t_o, m_o, b_o, s_o])),
+                }
+            }
+            // VecSame-hι
+            ("head", [v]) => {
+                let (c, v_o) = norm!(v, env);
+                if let S("vec::", vec_args) = &v_o
+                    && let [e, _es] = &vec_args[..]
+                {
+                    Some(e.clone())
+                } else {
+                    some_if!(c => S("head", vec![v_o]))
+                }
+            }
+            // VecSame-tι
+            ("tail", [v]) => {
+                let (c, v_o) = norm!(v, env);
+                if let S("vec::", vec_args) = &v_o
+                    && let [_e, es] = &vec_args[..]
+                {
+                    Some(es.clone())
+                } else {
+                    some_if!(c => S("tail", vec![v_o]))
+                }
+            }
+            // VecSame-i-Vι1, VecSame-i-Vι2
+            // TODO: test
+            ("ind-Vec", [l, t, m, b, s]) => {
+                let (c1, l) = norm!(l, env);
+                let (c2, t) = norm!(t, env);
+                let (c3, m) = norm!(m, env);
+                let (c4, b) = norm!(b, env);
+                let (c5, s) = norm!(s, env);
+                if matches!(l, Nat(0)) || matches!(t, I("vecnil")) {
+                    Some(b)
+                } else if is_add1(&l)
+                    && let S("vec::", ref t_args) = t
+                    && let [e, es] = &t_args[..]
+                {
+                    let l1 = sub1(&l);
+                    Some(app!(
+                        s.clone(),
+                        l1.clone(),
+                        e.clone(),
+                        es.clone(),
+                        S("ind-Vec", vec![l1, es.clone(), m, b, s])
+                    ))
+                } else {
+                    some_if!( c1 || c2 || c3 || c4 || c5 => S("ind-Vec", vec![l, t, m, b, s]))
+                }
+            }
+            // EqSame-rι, (replace (same e) m b) -> b
+            ("replace", [t, m, b]) => {
+                let (c1, t_o) = norm!(t, env);
+                let (c2, m_o) = norm!(m, env);
+                let (c3, b_o) = norm!(b, env);
+                if let S("same", _same_args) = &t_o {
+                    // no_else!( let [e] = &same_args[..] );
+                    Some(b_o)
+                } else {
+                    some_if!(c1 || c2 || c3 => S("replace", vec![t_o, m_o, b_o]))
+                }
+            }
+            // EqSame-cι, (cong (same e) f) -> (same (f e))
+            ("cong", [ty_x, t, f]) => {
+                let (c1, ty_x_o) = norm!(ty_x, env);
+                let (c2, t_o) = norm!(t, env);
+                let (c3, f_o) = norm!(f, env);
+                if let S("same", same_args) = &t_o
+                    && let [e] = &same_args[..]
+                {
+                    Some(S("same", vec![app!(f_o, e.clone())]))
+                } else {
+                    some_if!(c1 || c2 || c3 => S("cong", vec![ty_x_o, t_o, f_o]))
+                }
+            }
+            // EqSame-sι, (symm (same e)) -> (same e)
+            ("symm", [t]) => {
+                let (c, t_o) = norm!(t, env);
+                if let S("same", same_args) = &t_o
+                    && let [e] = &same_args[..]
+                {
+                    Some(S("same", vec![e.clone()]))
+                } else {
+                    some_if!(c => S("symm", vec![t_o]))
+                }
+            }
+            (bf, args) => {
+                let results: Vec<_> = args.iter().map(|a| norm!(a, env)).collect();
+                if results.iter().any(|(c, _)| *c) {
+                    Some(S(bf, results.into_iter().map(|(_, v)| v).collect()))
+                } else {
+                    None
+                }
+            }
+        },
     }
 }
 
