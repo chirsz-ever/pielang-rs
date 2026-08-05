@@ -687,8 +687,45 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                 _ => unreachable!(),
             }
         }
-        // SigmaF-1
-        SigmaExpr(_, _args, _body) => todo!("SigmaExpr"),
+        // ΣF-1, ΣF-2
+        SigmaExpr(sp, args, body) => {
+            match args.as_slice() {
+                // ΣF-1
+                [(Id(_, id), ty_a)] => {
+                    let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
+                    let id = (*id).into();
+                    let (l_d, ty_d_o) = resolve_type(body, &env_ext(env, &id, &ty_a_o))?;
+                    let arg_o = if ident_occur_in(0, &ty_d_o) {
+                        Argument::Symbol(id)
+                    } else {
+                        Argument::Dummy
+                    };
+                    (
+                        U!(Nat(std::cmp::max(l_a, l_d))),
+                        Sigma(arg_o, ty_a_o.into(), ty_d_o.into()),
+                    )
+                }
+                // ΣF-2, (Σ ((a A)(b B)...) D) -> (Σ ((a A)) (Σ ((b B)...) D))
+                [(Id(_, id), ty_a), rargs @ ..] => {
+                    let (l_a, ty_a_o) = resolve_type(ty_a, env)?;
+                    let id = (*id).into();
+                    let (l_d, ty_d_o) = resolve_type(
+                        &SigmaExpr(*sp, rargs.to_vec(), body.clone()),
+                        &env_ext(env, &id, &ty_a_o),
+                    )?;
+                    let arg_o = if ident_occur_in(0, &ty_d_o) {
+                        Argument::Symbol(id)
+                    } else {
+                        Argument::Dummy
+                    };
+                    (
+                        U!(Nat(std::cmp::max(l_a, l_d))),
+                        Sigma(arg_o, ty_a_o.into(), ty_d_o.into()),
+                    )
+                }
+                _ => unreachable!(),
+            }
+        }
         AppExpr(_, exprs) => {
             match exprs.as_slice() {
                 // (U n): (U (add1 n))
@@ -1851,6 +1888,10 @@ mod unit_tests {
         insta::assert_snapshot!(do_statement("(= Atom 'kale 'blackberries)"), @"(the U (= Atom 'kale 'blackberries))");
         insta::assert_snapshot!(do_statement("(= Nat 1 (add1 zero))"), @"(the U (= Nat 1 1))");
         insta::assert_snapshot!(do_statement("(= U Nat Nat)"), @"(the (U 1) (= U Nat Nat))");
+        insta::assert_snapshot!(do_statement("(the U (Σ ((bread Atom)) (= Atom bread 'bagel)))"), @"(the U (Σ ((bread Atom)) (= Atom bread 'bagel)))");
+        insta::assert_snapshot!(do_statement("(the (Σ ((bread Atom)) (= Atom bread 'bagel)) (cons 'bagel (same 'bagel)))"), @"(the (Σ ((bread Atom)) (= Atom bread 'bagel)) (cons 'bagel (same 'bagel)))");
+        insta::assert_snapshot!(do_statement("(Σ ((A U)) A)"), @"(the (U 1) (Σ ((A U)) A))");
+        insta::assert_snapshot!(do_statement("(the (Σ ((A U)) A) (cons Nat 4))"), @"(the (Σ ((A U)) A) (cons Nat 4))");
     }
 
     #[test]
