@@ -249,7 +249,7 @@ impl std::ops::Drop for IndentGuard {
 
 /// depth 表示当前作用域深度
 /// TODO: 单元测试
-fn shift_dbi_d(e: &core::Expr, inc: usize, depth: usize) -> core::Expr {
+fn shift_dbi_d(e: &core::Expr, inc: isize, depth: usize) -> core::Expr {
     use core::Expr::*;
     if inc == 0 {
         return e.clone();
@@ -257,7 +257,7 @@ fn shift_dbi_d(e: &core::Expr, inc: usize, depth: usize) -> core::Expr {
     match e {
         Identifier(name, idx) => {
             if *idx >= depth {
-                Identifier(name.clone(), idx + inc)
+                Identifier(name.clone(), idx.strict_add_signed(inc))
             } else {
                 e.clone()
             }
@@ -289,6 +289,11 @@ fn shift_dbi_d(e: &core::Expr, inc: usize, depth: usize) -> core::Expr {
 
 /// 所有自由变量的 dbi 值加上一个数
 fn shift_dbi(e: &core::Expr, inc: usize) -> core::Expr {
+    shift_dbi_d(e, inc as isize, 0)
+}
+
+/// 所有自由变量的 dbi 值加上一个数，可以是负数
+fn shift_dbi_signed(e: &core::Expr, inc: isize) -> core::Expr {
     shift_dbi_d(e, inc, 0)
 }
 
@@ -1059,11 +1064,20 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     try_match! { let S("=", [ty_x1, from, to]) = &ty_t; env }
                     let (ty_f, f_o) = synthesize(f, env)?;
                     try_match! { let Pi(_arg, ty_x2, ty_y) = &ty_f; env }
+                    if ident_occur_in(0, ty_y) {
+                        throw!(
+                            f.span(),
+                            ErrorKind::TypeNotMatch {
+                                expected: "non-dependent-type function".into(),
+                                given: f.to_string()
+                            }
+                        )
+                    }
                     type_check_same(ty_x1, ty_x2, env)?;
                     let f_o = Ref::new(f_o);
                     let ty = bapp!(
                         "=",
-                        ty_y.as_ref().clone(),
+                        shift_dbi_signed(ty_y, -1),
                         app!(ref f_o, from.clone()),
                         app!(ref f_o, to.clone())
                     );
