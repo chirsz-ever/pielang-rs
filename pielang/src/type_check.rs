@@ -1715,114 +1715,19 @@ pub fn expr_check_same(
         }
         // FunSame-λ
         (Lambda(_, r1), Lambda(_, r2)) => {
-            no_else! { let Pi(a, ty_a, ty_r) = ct };
-            expr_check_same(r1, r2, ty_r, &env_ext_arg(env, a, ty_a))?;
+            if let Pi(a, ty_a, ty_r) = ct {
+                expr_check_same(r1, r2, ty_r, &env_ext_arg(env, a, ty_a))?;
+            } else {
+                expr_check_same(r1, r2, &I("ignore"), &env_ext_arg(env, &Argument::Dummy, &I("ignore")))?;
+            }
         }
         (S(f1, args1), S(f2, args2)) if f1 == f2 && PIE_TYPE_CONSTRUCTORS.contains(f1) => {
             type_check_same(c1, c2, env)?;
         }
         (S(f1, args1), S(f2, args2)) if f1 == f2 => {
-            match (&**f1, &**args1, &**args2) {
-                // ΣSame-cons
-                ("cons", [a1, d1], [a2, d2]) => {
-                    no_else! { let Sigma(arg, ty_a, ty_d) = ct };
-                    expr_check_same(a1, a2, ty_a, env)?;
-                    expr_check_same(d1, d2, &substitute_beta_arg(ty_d, arg, a1, env), env)?;
-                }
-                // ΣSame-car
-                // FIXME
-                ("car", [p1], [p2]) => expr_check_same(p1, p2, &I("Sigma"), env)?,
-                // ΣSame-cdr
-                // FIXME
-                ("cdr", [p1], [p2]) => expr_check_same(p1, p2, &I("Sigma"), env)?,
-                // NatSame-w-N
-                ("which-Nat", [t1, b1, s1], [t2, b2, s2]) => {
-                    expr_check_same(t1, t2, &I("Nat"), env)?;
-                    expr_check_same(b1, b2, ct, env)?;
-                    expr_check_same(s1, s2, &arrow!(I("Nat"), ct.clone()), env)?;
-                }
-                // NatSame-iter-Nat
-                ("iter-Nat", [t1, b1, s1], [t2, b2, s2]) => {
-                    expr_check_same(t1, t2, &I("Nat"), env)?;
-                    expr_check_same(b1, b2, ct, env)?;
-                    expr_check_same(s1, s2, &arrow!(ct.clone(), ct.clone()), env)?;
-                }
-                // NatSame-rec-Nat
-                ("rec-Nat", [t1, b1, s1], [t2, b2, s2]) => {
-                    expr_check_same(t1, t2, &I("Nat"), env)?;
-                    expr_check_same(b1, b2, ct, env)?;
-                    expr_check_same(s1, s2, &arrow!(I("Nat"), ct.clone(), ct.clone()), env)?;
-                }
-                // NatSame-ind-Nat
-                ("ind-Nat", [t1, m1, b1, s1], [t2, m2, b2, s2]) => {
-                    expr_check_same(t1, t2, &I("Nat"), env)?;
-                    expr_check_same(m1, m2, &arrow!(I("Nat"), U!()), env)?;
-                    expr_check_same(b1, b2, &app!(m1.clone(), Nat(0)), env)?;
-                    // s : (k : Nat) -> (m k) -> (m (add1 k))
-                    let k: Ref<str> = "k".into();
-                    let ty_s = Pi(
-                        Argument::Symbol(k.clone()),
-                        Ref::new(I("Nat")),
-                        Ref::new(Pi(
-                            Argument::Dummy,
-                            Ref::new(app!(shift_dbi(m1, 1), Identifier(k.clone(), 0))),
-                            Ref::new(app!(shift_dbi(m1, 2), S("add1", vec![Identifier(k, 1)]))),
-                        )),
-                    );
-                    expr_check_same(s1, s2, &ty_s, env)?;
-                }
-                // ListSame-::
-                ("::", [e1, es1], [e2, es2]) => {
-                    no_else! { let S("List", args) = ct };
-                    no_else! { let [ty_e] = &args[..] };
-                    expr_check_same(e1, e2, ty_e, env)?;
-                    expr_check_same(es1, es2, ct, env)?;
-                }
-                // ListSame-rec-List
-                ("rec-List", [t1, b1, s1], [t2, b2, s2]) => {
-                    no_else! { let S("the", args1) = t1 };
-                    no_else! { let S("the", args2) = t2 };
-                    no_else! { let [ty_t1, t1] = &args1[..] };
-                    no_else! { let [ty_t2, t2] = &args2[..] };
-
-                    type_check_same(ty_t1, ty_t2, env)?;
-                    no_else!( let S("List", args) = ty_t1 );
-                    no_else!( let [ty_e] = &args[..] );
-                    expr_check_same(t1, t2, ty_t1, env)?;
-                    expr_check_same(b1, b2, &I("ignore"), env)?;
-
-                    // s : E -> (List E) -> B -> B
-                    let ty_b = ct;
-                    let ty_s = arrow!(ty_e.clone(), ty_t1.clone(), ty_b.clone(), ty_b.clone());
-                    expr_check_same(s1, s2, &ty_s, env)?;
-                }
-                // ListSame-ind-List
-                // ("ind-List", [t1, m1, b1, s1], [t2, m2, b2, s2]) => {
-                //     todo!()
-                // }
-                // VecSame-vec::
-                ("vec::", [e1, es1], [e2, es2]) => {
-                    no_else! { let S("Vec", args) = ct };
-                    no_else! { let [ty_e, len] = &args[..] };
-                    expr_check_same(e1, e2, ty_e, env)?;
-                    expr_check_same(es1, es2, &S("Vec", vec![ty_e.clone(), sub1(len)]), env)?;
-                }
-                // VecSame-head
-                ("head", [v1], [v2]) => {
-                    // FIXME: how to get vector length?
-                    expr_check_same(v1, v2, &S("Vec", vec![ct.clone(), Nat(0)]), env)?;
-                }
-                // VecSame-tail
-                ("tail", [v1], [v2]) => {
-                    no_else! { let S("Vec", args) = ct };
-                    no_else! { let [ty_e, len] = &args[..] };
-                    expr_check_same(v1, v2, &S("Vec", vec![ty_e.clone(), add1(len)]), env)?;
-                }
-                // VecSame-ind-Vec
-                // ("ind-Vec", [t1, m1, b1, s1], [t2, m2, b2, s2]) => {
-                //     todo!()
-                // }
-                _ => throw_ne!(),
+            throw_if_not!(args1.len() == args2.len());
+            for (arg1, arg2) in args1.iter().zip(args2.iter()) {
+                expr_check_same(arg1, arg2, ct, env)?;
             }
         }
         _ => throw_ne!(),
@@ -2026,7 +1931,6 @@ mod unit_tests {
 
     #[test]
     fn normalize_by_type() {
-        // TODO: every Trivial values are equal. So do Absurd values.
         insta::assert_snapshot!(do_statement("(the (Pi ((x Trivial)) (= Trivial x sole)) (lambda (x) (same sole)))"), @"(the (Π ((x Trivial)) (= Trivial x sole)) (λ (x) (same sole)))");
         insta::assert_snapshot!(do_statement("(the (Pi ((x Absurd)(y Absurd)) (= Absurd x y)) (lambda (x y) (same x)))"), @"(the (Π ((x Absurd)(y Absurd)) (= Absurd x y)) (λ (x y) (same x)))");
 

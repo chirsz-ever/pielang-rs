@@ -1,0 +1,6 @@
+---
+source: pielang/tests/test.rs
+input_file: pielang/tests/snapshots/ch11.pie
+---
+(the (Vec Atom 5) (vec:: 'kanelbullar (vec:: 'plättar (vec:: 'prinsesstårta (vec:: 'coffee (vec:: 'cocoa vecnil))))))
+(the (List Atom) (:: 'kanelbullar (:: 'plättar (:: 'prinsesstårta nil))))
