@@ -936,38 +936,68 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     )
                 }
                 // VecE-3
-                // [Ident(_, "ind-Vec"), l, t, m, b, s] => {
-                //     let l_o = synthesize_with_type(l, &I("Nat"), env)?;
-                //     let (ty_t, t_o) = synthesize(t, env)?;
-                //     try_match! { let S("Vec", [ty_e, n]) = &ty_t; env }
-                //     expr_check_same(&l_o, n, &I("Nat"), env)?;
-                //     let ty_m = pi!(
-                //         I("Nat"),
-                //         bapp!("Vec", ty_e.clone(), Identifier(0)),
-                //         U!()
-                //     );
-                //     let m_o = synthesize_with_type(m, &ty_m, env)?;
-                //     let m_o = Ref::new(m_o);
-                //     // FIXME: 在此需要编译期计算
-                //     let ty_b = app!(ref m_o, bty::zero(), bty::vecnil());
-                //     let b_o = synthesize_with_type(b, &ty_b, env)?;
-                //     let ty_s = pi!(
-                //         I("Nat"),
-                //         ty_e.clone(),
-                //         bapp!("Vec", ty_e.clone(), Identifier(1)),
-                //         app!(ref m_o, Identifier(2), Identifier(0)),
-                //         app!(
-                //             ref m_o,
-                //             bapp!("add1", Identifier(3)),
-                //             bapp!("vec::", Identifier(2), Identifier(1))
-                //         )
-                //     );
-                //     let s_o = synthesize_with_type(s, &ty_s, env)?;
-                //     (
-                //         app!(ref m_o, l_o.clone(), t_o.clone()),
-                //         S("ind-Vec", vec![l_o, t_o, m_o.as_ref().clone(), b_o, s_o]),
-                //     )
-                // }
+                [Ident(_, "ind-Vec"), l, t, m, b, s] => {
+                    let l_o = synthesize_with_type(l, &I("Nat"), env)?;
+                    let (ty_t, t_o) = synthesize(t, env)?;
+                    try_match! { let S("Vec", [ty_e, n]) = &ty_t; env }
+                    expr_check_same(&l_o, n, &I("Nat"), env)?;
+                    // m : (k : Nat) -> (Vec E k) -> U
+                    let ty_m = Pi(
+                        Argument::Symbol("k".into()),
+                        I("Nat").into(),
+                        Pi(
+                            Argument::Dummy,
+                            bapp!("Vec", shift_dbi(&ty_e, 1), Identifier("k".into(), 0)).into(),
+                            U!().into(),
+                        )
+                        .into(),
+                    );
+                    let m_o = synthesize_with_type(m, &ty_m, env)?;
+                    let m_o = Ref::new(m_o);
+                    let ty_b = app!(ref m_o, Nat(0), I("vecnil"));
+                    let b_o = synthesize_with_type(b, &ty_b, env)?;
+                    // s : (k : Nat) -> (e : E) -> (es : (Vec E k)) -> (m k es) -> (m (add1 k) (vec:: e es))
+                    let ty_s = Pi(
+                        Argument::Symbol("k".into()),
+                        I("Nat").into(),
+                        Pi(
+                            Argument::Symbol("e".into()),
+                            shift_dbi(&ty_e, 1).into(),
+                            Pi(
+                                Argument::Symbol("es".into()),
+                                bapp!("Vec", shift_dbi(&ty_e, 2), Identifier("k".into(), 1)).into(),
+                                Pi(
+                                    Argument::Dummy,
+                                    app!(
+                                        shift_dbi(&m_o, 3),
+                                        Identifier("k".into(), 2),
+                                        Identifier("es".into(), 0)
+                                    )
+                                    .into(),
+                                    app!(
+                                        shift_dbi(&m_o, 4),
+                                        S("add1", vec![Identifier("k".into(), 3)]),
+                                        bapp!(
+                                            "vec::",
+                                            Identifier("e".into(), 2),
+                                            Identifier("es".into(), 1)
+                                        )
+                                    )
+                                    .into(),
+                                )
+                                .into(),
+                            )
+                            .into(),
+                        )
+                        .into(),
+                    )
+                    .into();
+                    let s_o = synthesize_with_type(s, &ty_s, env)?;
+                    (
+                        app!(ref m_o, l_o.clone(), t_o.clone()),
+                        S("ind-Vec", vec![l_o, t_o, m_o.as_ref().clone(), b_o, s_o]),
+                    )
+                }
                 // EitherF
                 [Ident(_, "Either"), ty_l, ty_r] => {
                     let (l_l, ty_l_o) = resolve_type(ty_l, env)?;
