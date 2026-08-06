@@ -952,7 +952,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                         I("Nat").into(),
                         Pi(
                             Argument::Dummy,
-                            bapp!("Vec", shift_dbi(&ty_e, 1), Identifier("k".into(), 0)).into(),
+                            bapp!("Vec", shift_dbi(ty_e, 1), Identifier("k".into(), 0)).into(),
                             U!().into(),
                         )
                         .into(),
@@ -967,10 +967,10 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                         I("Nat").into(),
                         Pi(
                             Argument::Symbol("e".into()),
-                            shift_dbi(&ty_e, 1).into(),
+                            shift_dbi(ty_e, 1).into(),
                             Pi(
                                 Argument::Symbol("es".into()),
-                                bapp!("Vec", shift_dbi(&ty_e, 2), Identifier("k".into(), 1)).into(),
+                                bapp!("Vec", shift_dbi(ty_e, 2), Identifier("k".into(), 1)).into(),
                                 Pi(
                                     Argument::Dummy,
                                     app!(
@@ -995,8 +995,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                             .into(),
                         )
                         .into(),
-                    )
-                    .into();
+                    );
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     (
                         app!(ref m_o, l_o.clone(), t_o.clone()),
@@ -1718,7 +1717,12 @@ pub fn expr_check_same(
             if let Pi(a, ty_a, ty_r) = ct {
                 expr_check_same(r1, r2, ty_r, &env_ext_arg(env, a, ty_a))?;
             } else {
-                expr_check_same(r1, r2, &I("ignore"), &env_ext_arg(env, &Argument::Dummy, &I("ignore")))?;
+                expr_check_same(
+                    r1,
+                    r2,
+                    &I("ignore"),
+                    &env_ext_arg(env, &Argument::Dummy, &I("ignore")),
+                )?;
             }
         }
         (S(f1, args1), S(f2, args2)) if f1 == f2 && PIE_TYPE_CONSTRUCTORS.contains(f1) => {
