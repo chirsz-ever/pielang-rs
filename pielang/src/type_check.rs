@@ -1752,6 +1752,11 @@ pub fn expr_check_same(
             type_check_same(ty_a1, ty_a2, env)?;
             type_check_same(ty_d1, ty_d2, &env_ext_arg(env, arg1, ty_a1))?;
         }
+        // FunSame-Π
+        (Pi(a1, ty_a1, ty_r1), Pi(_a2, ty_a2, ty_r2)) => {
+            type_check_same(ty_a1, ty_a2, env)?;
+            type_check_same(ty_r1, ty_r2, &env_ext_arg(env, a1, ty_a1))?;
+        }
         // FunSame-λ
         (Lambda(_, r1), Lambda(_, r2)) => {
             if let Pi(a, ty_a, ty_r) = ct {
