@@ -1,0 +1,37 @@
+#lang pie
+
+(claim Two U)
+(define Two (Either Trivial Trivial))
+
+(claim Two-Fun (→ Nat U))
+(define Two-Fun
+  (λ (n)
+    (iter-Nat n
+      Two
+      (λ (type) (→ Two type)))))
+
+(claim both-left (→ Two Two Two))
+(define both-left
+  (λ (a b)
+    (ind-Either a
+      (λ (_) Two)
+      (λ (_) b)
+      (λ (_) (right sole)))))
+
+(claim step-taut
+  (Π ((n Nat))
+    (→ (→ (Two-Fun n) Two)
+       (→ (Two-Fun (add1 n)) Two))))
+(define step-taut
+  (λ (n taut_n)
+    (λ (f) (both-left (taut_n (f (left sole))) (taut_n (f (right sole)))))))
+
+(claim taut (Π ((n Nat)) (→ (Two-Fun n) Two)))
+(define taut
+  (λ (n)
+    (ind-Nat n
+      (λ (k) (→ (Two-Fun k) Two))
+      (λ (x) x)
+      step-taut)))
+
+(taut 2 both-left) ; (the (Either Trivial Trivial) (right sole))

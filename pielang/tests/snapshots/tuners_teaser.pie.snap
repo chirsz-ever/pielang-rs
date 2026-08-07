@@ -1,0 +1,5 @@
+---
+source: pielang/tests/test.rs
+input_file: pielang/tests/snapshots/tuners_teaser.pie
+---
+(the (Either Trivial Trivial) (right sole))
