@@ -1665,6 +1665,15 @@ fn type_check_same(ty1: &core::Expr, ty2: &core::Expr, env: &Env) -> Result<(), 
             }
             ("U", _, "List" | "Vec" | "=" | "Either", _) => throw_ne!(),
             ("List" | "Vec" | "=" | "Either", _, "U", _) => throw_ne!(),
+            // beta-equal
+            (f1, args1, f2, args2) if f1 == f2 => {
+                if args1.len() != args2.len() {
+                    throw_ne!()
+                }
+                for (arg1, arg2) in args1.iter().zip(args2.iter()) {
+                    expr_check_same(arg1, arg2, &I("ignore"), env)?;
+                }
+            }
             _ => throw_ne!(),
         },
         (S("U", _), I("Atom" | "Nat" | "Trivial" | "Absurd")) => throw_ne!(),
