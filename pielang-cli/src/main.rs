@@ -3,12 +3,115 @@ use pielang::ast::{Id, check_syntax};
 use pielang::core::DBIPPrint as dpp;
 use pielang::core::Expr::Nat;
 use pielang::type_check as tc;
+use pielang::utils::{LocatedError, Span};
 use rustyline::KeyEvent;
 use std::fs::File;
 use std::io::{self, prelude::*};
 use structopt::StructOpt;
 
 type Env = tc::Env;
+
+/// 尝试从 anyhow::Error 中提取 LocatedError 的位置与不含 Span 的消息文本。
+fn locate_error(err: &anyhow::Error) -> Option<(Option<Span>, String)> {
+    if let Some(e) = err.downcast_ref::<LocatedError<pielang::core::ErrorKind>>() {
+        return Some((e.loc, format!("{}", e.erk)));
+    }
+    if let Some(e) = err.downcast_ref::<LocatedError<tc::ErrorKind>>() {
+        return Some((e.loc, format!("{}", e.erk)));
+    }
+    if let Some(e) = err.downcast_ref::<LocatedError<String>>() {
+        return Some((e.loc, e.erk.clone()));
+    }
+    None
+}
+
+/// 将源代码的字节偏移转换为 1-based 的行列号。
+fn offset_to_line_col(source: &str, offset: usize) -> (usize, usize) {
+    let mut line = 1usize;
+    let mut col = 1usize;
+    for (i, ch) in source.char_indices() {
+        if i >= offset {
+            return (line, col);
+        }
+        if ch == '\n' {
+            line += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
+    }
+    (line, col)
+}
+
+/// 若错误是 LocatedError，则在前缀追加文件名与行列信息。
+fn format_error(err: &anyhow::Error, source: &str, filename: &str) -> String {
+    if let Some((loc, msg)) = locate_error(err) {
+        if let Some(Span(l, r)) = loc {
+            let (sl, sc) = offset_to_line_col(source, l);
+            let (el, ec) = offset_to_line_col(source, r);
+            if sl == el {
+                return format!("{}:{}:{}-{}: {}", filename, sl, sc, ec, msg);
+            }
+            return format!("{}:{}:{}-{}:{}: {}", filename, sl, sc, el, ec, msg);
+        }
+        return format!("{}: {}", filename, msg);
+    }
+    format!("{}: {}", filename, err)
+}
+
+/// 在给定源码上下文中执行 `f`，如返回错误则统一打印为 `Error: ...`，并返回是否失败。
+fn run_with_source<F>(source: &str, filename: &str, f: F) -> bool
+where
+    F: FnOnce() -> anyhow::Result<()>,
+{
+    match f() {
+        Ok(()) => false,
+        Err(err) => {
+            eprintln!("Error: {}", format_error(&err, source, filename));
+            true
+        }
+    }
+}
+
+/// 将 lalrpop 的 ParseError 转换为 anyhow::Error，尽量保留 LocatedError 的位置信息。
+fn parse_error_to_anyhow<T, E>(
+    err: lalrpop_util::ParseError<usize, T, LocatedError<E>>,
+) -> anyhow::Error
+where
+    T: std::fmt::Display,
+    E: std::fmt::Debug + std::fmt::Display + Send + Sync + 'static,
+{
+    use lalrpop_util::ParseError::*;
+    match err {
+        User { error } => anyhow::Error::new(error),
+        InvalidToken { location } => anyhow::Error::new(LocatedError {
+            loc: Some(Span(location, location)),
+            erk: "invalid token".to_string(),
+        }),
+        UnrecognizedEof { location, expected } => anyhow::Error::new(LocatedError {
+            loc: Some(Span(location, location)),
+            erk: format!(
+                "unexpected end of file, expected one of: {}",
+                expected.join(", ")
+            ),
+        }),
+        UnrecognizedToken {
+            token: (l, t, r),
+            expected,
+        } => anyhow::Error::new(LocatedError {
+            loc: Some(Span(l, r)),
+            erk: format!(
+                "unrecognized token `{}`, expected one of: {}",
+                t,
+                expected.join(", ")
+            ),
+        }),
+        ExtraToken { token: (l, t, r) } => anyhow::Error::new(LocatedError {
+            loc: Some(Span(l, r)),
+            erk: format!("extra token `{}`", t),
+        }),
+    }
+}
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -39,41 +142,51 @@ fn main() -> anyhow::Result<()> {
     // 如果有文件参数，先解释文件
     if let Some(input_arg) = opt.input.as_ref() {
         let (mut stdin_read, mut file_read);
+        let filename: String;
         let input: &mut dyn Read = if input_arg.as_os_str() == "-" {
             stdin_read = io::stdin();
+            filename = "stdin".to_string();
             &mut stdin_read
         } else {
             file_read = File::open(input_arg)?;
+            filename = input_arg.display().to_string();
             &mut file_read
         };
 
-        interpret_file(input, opt.check_type_only, &mut env)?;
+        let mut buf = String::new();
+        input.read_to_string(&mut buf)?;
+        if run_with_source(&buf, &filename, || {
+            interpret_file(&buf, opt.check_type_only, &mut env)
+        }) {
+            std::process::exit(1);
+        }
     }
 
     // 处理 -e 参数
-    let parser = pielang::syntax::GlobalStatemantListParser::new();
-    use pielang::ast::GlobalStatemant::*;
     for e in &opt.exprs {
-        let stats = parser.parse(e).map_err(|err| anyhow::anyhow!("{}", err))?;
-        for stat in stats {
-            match stat {
-                Expression(expr) => {
-                    process_expression(&expr, &env, opt.check_type_only)?;
-                }
-                CheckSame(_, ty, e1, e2) => {
-                    process_check_same(&ty, &e1, &e2, &env)?;
-                }
-                _ => {
-                    bail!(
-                        "Only `expression` and `check-same` are supported in command line arguments"
-                    );
-                }
-            }
+        if run_with_source(e, "-e", || eval_arg(e, opt.check_type_only, &mut env)) {
+            std::process::exit(1);
         }
     }
 
     if should_repl(&opt) {
         repl(opt.check_type_only, &mut env)?;
+    }
+    Ok(())
+}
+
+fn eval_arg(source: &str, check_type_only: bool, env: &mut Env) -> anyhow::Result<()> {
+    use pielang::ast::GlobalStatemant::*;
+    let parser = pielang::syntax::GlobalStatemantListParser::new();
+    let stats = parser.parse(source).map_err(parse_error_to_anyhow)?;
+    for stat in stats {
+        match stat {
+            Expression(expr) => process_expression(&expr, env, check_type_only)?,
+            CheckSame(_, ty, e1, e2) => process_check_same(&ty, &e1, &e2, env)?,
+            _ => {
+                bail!("Only `expression` and `check-same` are supported in command line arguments")
+            }
+        }
     }
     Ok(())
 }
@@ -163,19 +276,11 @@ fn check_expression(expr: &pielang::ast::Expr, env: &Env) -> anyhow::Result<()> 
     Ok(())
 }
 
-fn interpret_file(
-    input: &mut dyn Read,
-    check_type_only: bool,
-    env: &mut Env,
-) -> anyhow::Result<()> {
+fn interpret_file(source: &str, check_type_only: bool, env: &mut Env) -> anyhow::Result<()> {
     use pielang::ast::GlobalStatemant::*;
 
     let parser = pielang::syntax::GrammerParser::new();
-    let mut buf = String::new();
-    input.read_to_string(&mut buf)?;
-    let stats = parser
-        .parse(&buf)
-        .map_err(|err| anyhow::anyhow!("{}", err))?;
+    let stats = parser.parse(source).map_err(parse_error_to_anyhow)?;
     for stmt in stats {
         match stmt {
             Claim(_, Id(_, sym), ty) => {
@@ -217,35 +322,19 @@ fn repl(check_type_only: bool, env: &mut Env) -> anyhow::Result<()> {
                 if line.is_empty() {
                     continue;
                 }
-                match parser.parse(line).map_err(|e| anyhow::anyhow!("{}", e)) {
+                match parser.parse(line) {
                     Ok(stats) => {
                         for stat in stats {
-                            match stat {
-                                Expression(expr) => {
-                                    match process_expression(&expr, env, check_type_only) {
-                                        Ok(()) => {}
-                                        Err(err) => eprintln!("Error: {:?}", err),
-                                    }
-                                }
-                                Define(_, Id(_, sym), expr) => {
-                                    process_define(sym, &expr, env)
-                                        .unwrap_or_else(|err| eprintln!("Error: {:?}", err));
-                                }
-                                Claim(_, Id(_, sym), ty) => {
-                                    process_claim(sym, &ty, env)
-                                        .unwrap_or_else(|err| eprintln!("Error: {:?}", err));
-                                }
-                                CheckSame(_, ty, e1, e2) => {
-                                    match process_check_same(&ty, &e1, &e2, env) {
-                                        Ok(()) => {}
-                                        Err(err) => eprintln!("Error: {:?}", err),
-                                    }
-                                }
-                            }
+                            run_with_source(line, "REPL", || match stat {
+                                Expression(expr) => process_expression(&expr, env, check_type_only),
+                                Define(_, Id(_, sym), expr) => process_define(sym, &expr, env),
+                                Claim(_, Id(_, sym), ty) => process_claim(sym, &ty, env),
+                                CheckSame(_, ty, e1, e2) => process_check_same(&ty, &e1, &e2, env),
+                            });
                         }
                     }
                     Err(err) => {
-                        println!("Error: {}", err);
+                        run_with_source(line, "REPL", || Err(parse_error_to_anyhow(err)));
                     }
                 }
             }
