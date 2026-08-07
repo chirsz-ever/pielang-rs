@@ -58,7 +58,7 @@ ARGS:
   - [x] `Pair`
   - [x] `cons`
   - [x] `car`, `cdr`
-  - [ ] `Σ`
+  - [x] `Σ`
 - [x] Functions
   - [x] `->`
   - [x] `λ`
@@ -68,11 +68,11 @@ ARGS:
   - [x] `List`
   - [x] `nil`, `::`
   - [x] `rec-List`
-  - [ ] `ind-List`
-- [ ] Vectors
+  - [x] `ind-List`
+- [x] Vectors
   - [x] `Vec`
   - [x] `vecnil`, `vec::`
-  - [ ] `ind-Vec`
+  - [x] `ind-Vec`
 - [ ] Either
   - [ ] `Either`
   - [ ] `left`, `right`
