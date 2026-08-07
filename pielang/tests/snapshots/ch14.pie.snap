@@ -1,0 +1,8 @@
+---
+source: pielang/tests/test.rs
+input_file: pielang/tests/snapshots/ch14.pie
+---
+(the (Either Atom Trivial) (left 'ratatouille))
+(the (Either Atom Trivial) (left 'ratatouille))
+(the (Either Atom Trivial) (right sole))
+(the Atom 'kartoffelmad)
