@@ -1,0 +1,5 @@
+---
+source: pielang/tests/test.rs
+input_file: pielang/tests/snapshots/ch13.pie
+---
+(the (Either (Σ ((half Nat)) (= Nat 2 (iter-Nat half 0 (λ (j) (add1 (add1 j)))))) (Σ ((haf Nat)) (= Nat 2 (add1 (iter-Nat haf 0 (λ (j) (add1 (add1 j)))))))) (left (cons 1 (same 2))))

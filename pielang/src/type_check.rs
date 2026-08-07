@@ -489,12 +489,12 @@ pub fn synthesize_with_type(
                     let es_o = synthesize_with_type(es, &ty_subvec, env)?;
                     S("vec::", vec![e_o, es_o])
                 }
-                // EitehrI-1
+                // EitherI-1
                 ([Ident(_, "left"), lt], "Either", [ty_l, _ty_r]) => {
                     let lt_o = synthesize_with_type(lt, ty_l, env)?;
                     S("left", vec![lt_o])
                 }
-                // EitehrI-2
+                // EitherI-2
                 ([Ident(_, "right"), rt], "Either", [_ty_l, ty_r]) => {
                     let rt_o = synthesize_with_type(rt, ty_r, env)?;
                     S("right", vec![rt_o])
@@ -1012,22 +1012,35 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     )
                 }
                 // EitherE
-                // [Ident(_, "ind-Either"), t, m, bl, br] => {
-                //     let (ty_t, t_o) = synthesize(t, env)?;
-                //     try_match! { let S("Either", [ty_p, ty_s]) = &ty_t; env }
-                //     let ty_m = pi!(ty_t.clone(), U!());
-                //     let m_o = synthesize_with_type(m, &ty_m, env)?;
-                //     let m_o = Ref::new(m_o);
-                //     // FIXME: 在此需要编译期计算
-                //     let ty_bl = pi!(ty_p.clone(), app!(ref m_o, bapp!("left", Identifier(0))));
-                //     let bl_o = synthesize_with_type(bl, &ty_bl, env)?;
-                //     let ty_br = pi!(ty_s.clone(), app!(ref m_o, bapp!("right", Identifier(0))));
-                //     let br_o = synthesize_with_type(br, &ty_br, env)?;
-                //     (
-                //         app!(ref m_o, t_o.clone()),
-                //         S("ind-Either", vec![t_o, m_o.as_ref().clone(), bl_o, br_o]),
-                //     )
-                // }
+                [Ident(_, "ind-Either"), t, m, bl, br] => {
+                    let (ty_t, t_o) = synthesize(t, env)?;
+                    // m : (Either P S) -> U
+                    try_match! { let S("Either", [ty_p, ty_s]) = &ty_t; env }
+                    let ty_m = arrow!(ty_t.clone(), U!());
+                    let m_o = synthesize_with_type(m, &ty_m, env)?;
+                    // b_l : (x : P) -> (m (left x))
+                    let ty_bl = Pi(
+                        Argument::Symbol("x".into()),
+                        ty_p.clone().into(),
+                        app!(shift_dbi(&m_o, 1), bapp!("left", Identifier("x".into(), 0))).into(),
+                    );
+                    let bl_o = synthesize_with_type(bl, &ty_bl, env)?;
+                    // b_r : (x : S) -> (m (right x))
+                    let ty_br = Pi(
+                        Argument::Symbol("x".into()),
+                        ty_s.clone().into(),
+                        app!(
+                            shift_dbi(&m_o, 1),
+                            bapp!("right", Identifier("x".into(), 0))
+                        )
+                        .into(),
+                    );
+                    let br_o = synthesize_with_type(br, &ty_br, env)?;
+                    (
+                        app!(m_o.clone(), t_o.clone()),
+                        S("ind-Either", vec![t_o, m_o, bl_o, br_o]),
+                    )
+                }
                 // AbsE
                 [Ident(_, "ind-Absurd"), t, m] => {
                     let t_o = synthesize_with_type(t, &I("Absurd"), env)?;
@@ -1465,6 +1478,24 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
                     some_if!(c => S("symm", vec![t_o]))
                 }
             }
+            // EitherSame-i-Eι1, EitherSame-i-Eι2
+            ("ind-Either", [t, m, bl, br]) => {
+                let (c1, t) = norm!(t, env);
+                let (c2, m) = norm!(m, env);
+                let (c3, bl) = norm!(bl, env);
+                let (c4, br) = norm!(br, env);
+                if let S("left", left_args) = &t
+                    && let [x] = &left_args[..]
+                {
+                    Some(app!(bl.clone(), x.clone()))
+                } else if let S("right", right_args) = &t
+                    && let [x] = &right_args[..]
+                {
+                    Some(app!(br.clone(), x.clone()))
+                } else {
+                    some_if!( c1 || c2 || c3 || c4 => S("ind-Either", vec![t, m, bl, br]))
+                }
+            }
             (bf, args) => {
                 let results: Vec<_> = args.iter().map(|a| norm!(a, env)).collect();
                 if results.iter().any(|(c, _)| *c) {
@@ -1844,6 +1875,12 @@ mod unit_tests {
         insta::assert_snapshot!(do_synthesize("(car (the (Pair Atom Nat) (cons 'a 0)))"), @"(the Atom 'a)");
         insta::assert_snapshot!(do_synthesize("(cdr (the (Pair Atom Nat) (cons 'a 0)))"), @"(the Nat 0)");
         insta::assert_snapshot!(do_synthesize("(the (-> (Pair Atom Nat) (Pair Atom Nat)) (λ (p) (cons (car p) (cdr p))))"), @"(the (→ (Pair Atom Nat) (Pair Atom Nat)) (λ (p) p))");
+        // Either
+        insta::assert_snapshot!(do_synthesize("(Either Nat Atom)"), @"(the U (Either Nat Atom))");
+        insta::assert_snapshot!(do_synthesize("(the (Either Nat Atom) (left 0))"), @"(the (Either Nat Atom) (left 0))");
+        insta::assert_snapshot!(do_synthesize("(the (Either Nat Atom) (right 'a))"), @"(the (Either Nat Atom) (right 'a))");
+        insta::assert_snapshot!(do_synthesize("(ind-Either (the (Either Nat Atom) (left 0)) (λ (x) x) (λ (y) y))"), @"(the Nat 0)");
+        insta::assert_snapshot!(do_synthesize("(ind-Either (the (Either Nat Atom) (right 'a)) (λ (x) x) (λ (y) y))"), @"(the Atom 'a)");
         // Error cases
         insta::assert_snapshot!(do_synthesize("(the Nat 'a)"), @"Error: 9:11: Expected Nat but given Atom");
         insta::assert_snapshot!(do_synthesize("(the Atom zero)"), @"Error: 10:14: Expected Atom but given Nat");

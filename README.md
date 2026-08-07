@@ -64,7 +64,7 @@ ARGS:
   - [x] `λ`
   - [x] application
   - [x] `Π`
-- [ ] Lists
+- [x] Lists
   - [x] `List`
   - [x] `nil`, `::`
   - [x] `rec-List`
@@ -73,10 +73,10 @@ ARGS:
   - [x] `Vec`
   - [x] `vecnil`, `vec::`
   - [x] `ind-Vec`
-- [ ] Either
-  - [ ] `Either`
-  - [ ] `left`, `right`
-  - [ ] `ind-Either`
+- [x] Either
+  - [x] `Either`
+  - [x] `left`, `right`
+  - [x] `ind-Either`
 - [ ] Equality
   - [x] `=`
   - [x] `same`
