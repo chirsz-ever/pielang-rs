@@ -283,6 +283,7 @@ pub fn check_builtin_names<'a>(
 
 /// - checking built-in names have correct number of arguments
 /// - checking no unbound variables
+/// FIXME: check syntax everywhere; allow other env types
 pub fn check_syntax<'a>(
     expr: &'a Expr<'a>,
     env: &StackMap<Option<&'a str>, ()>,

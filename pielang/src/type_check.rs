@@ -1139,7 +1139,10 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                 // FunE-1, FunE-2
                 [f, args @ ..] => {
                     assert!(!args.is_empty());
-                    assert!(!matches!(f, Ident(_, id) if is_builtin_name(id)));
+                    assert!(
+                        !matches!(f, Ident(_, id) if is_builtin_name(id)),
+                        "function application should not be builtin name {f}"
+                    );
                     let (ty_f, f_o, arg);
                     if let [arg_0] = args {
                         // FunE-1
@@ -1808,6 +1811,7 @@ mod unit_tests {
 
     fn do_expression(e: &ast::Expr) -> Result<String, String> {
         let env = default_environment();
+        ast::check_syntax(e, &crate::utils::StackMap::new()).map_err(|e| format!("{}", e))?;
         let (ty_o, e_o) = synthesize(e, &env).map_err(|e| format!("{}", e))?;
         let ty_o = normalize(&ty_o, &env);
         let e_o = normalize(&e_o, &env);
@@ -1893,8 +1897,10 @@ mod unit_tests {
         insta::assert_snapshot!(do_synthesize("(Either Nat Atom)"), @"(the U (Either Nat Atom))");
         insta::assert_snapshot!(do_synthesize("(the (Either Nat Atom) (left 0))"), @"(the (Either Nat Atom) (left 0))");
         insta::assert_snapshot!(do_synthesize("(the (Either Nat Atom) (right 'a))"), @"(the (Either Nat Atom) (right 'a))");
-        insta::assert_snapshot!(do_synthesize("(ind-Either (the (Either Nat Atom) (left 0)) (λ (x) x) (λ (y) y))"), @"(the Nat 0)");
-        insta::assert_snapshot!(do_synthesize("(ind-Either (the (Either Nat Atom) (right 'a)) (λ (x) x) (λ (y) y))"), @"(the Atom 'a)");
+        insta::assert_snapshot!(do_synthesize("(ind-Either (the (Either Nat Atom) (left 0)) (λ (_) Nat) (λ (x) x) (λ (y) 1))"), @"(the Nat 0)");
+        insta::assert_snapshot!(do_synthesize("(ind-Either (the (Either Nat Atom) (right 'a)) (λ (_) Nat) (λ (x) x) (λ (y) 1))"), @"(the Nat 1)");
+        insta::assert_snapshot!(do_synthesize("(ind-Either (the (Either Nat Atom) (left 0)) (λ (_) Atom) (λ (x) 'b) (λ (y) y))"), @"(the Atom 'b)");
+        insta::assert_snapshot!(do_synthesize("(ind-Either (the (Either Nat Atom) (right 'a)) (λ (_) Atom) (λ (x) 'b) (λ (y) y))"), @"(the Atom 'a)");
         // Error cases
         insta::assert_snapshot!(do_synthesize("(the Nat 'a)"), @"Error: 9:11: Expected Nat but given Atom");
         insta::assert_snapshot!(do_synthesize("(the Atom zero)"), @"Error: 10:14: Expected Atom but given Nat");
@@ -1905,6 +1911,8 @@ mod unit_tests {
         insta::assert_snapshot!(do_synthesize("(the sole 'a)"), @"Error: 5:9: sole is not a type");
         insta::assert_snapshot!(do_synthesize("(the Nat U)"), @"Error: 9:10: Expected Nat but given (U 1)");
         insta::assert_snapshot!(do_synthesize("(the U 'a)"), @"Error: 7:9: Expected U but given Atom");
+        insta::assert_snapshot!(do_synthesize("(ind-Either (the (Either Nat Atom) (left 0)) (λ (x) x) (λ (y) y))"), @"Error: 0:67: ind-Either need 4 arguments, got 3");
+        insta::assert_snapshot!(do_synthesize("(ind-Either (the (Either Nat Atom) (right 'a)) (λ (x) x) (λ (y) y))"), @"Error: 0:69: ind-Either need 4 arguments, got 3");
     }
 
     #[test]
