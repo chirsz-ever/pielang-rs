@@ -1774,6 +1774,13 @@ mod unit_tests {
         static STATEMENT_PARSER: crate::syntax::GlobalStatemantParser = crate::syntax::GlobalStatemantParser::new();
     }
 
+    fn check_syntax(e: &ast::Expr, env: &Env) -> Result<(), String>
+    {
+        let env_1 = env.iter().map(|(k, _)| (k.as_deref(), ())).collect();
+        ast::check_syntax(e, &env_1).map_err(|e| format!("{}", e))?;
+        Ok(())
+    } 
+
     fn do_synthesize(s: &str) -> String {
         let e = EXPR_PARSER.with(|p| p.parse(s)).expect("parse error");
         match do_expression(&e) {
@@ -1784,7 +1791,7 @@ mod unit_tests {
 
     fn do_expression(e: &ast::Expr) -> Result<String, String> {
         let env = default_environment();
-        ast::check_syntax(e, &crate::utils::StackMap::new()).map_err(|e| format!("{}", e))?;
+        check_syntax(&e, &env)?;
         let (ty_o, e_o) = synthesize(e, &env).map_err(|e| format!("{}", e))?;
         let ty_o = normalize(&ty_o, &env);
         let e_o = normalize(&e_o, &env);
@@ -1797,6 +1804,9 @@ mod unit_tests {
         let out = match stat {
             ast::GlobalStatemant::Expression(e) => do_expression(&e)?,
             ast::GlobalStatemant::CheckSame(_, ty, e1, e2) => {
+                check_syntax(&e1, &env)?;
+                check_syntax(&e2, &env)?;
+                check_syntax(&ty, &env)?;
                 let (_, ty_o) = resolve_type(&ty, &env).map_err(|e| format!("{}", e))?;
                 let ty_n = normalize(&ty_o, &env);
                 let e1_o = synthesize_with_type(&e1, &ty_n, &env).map_err(|e| format!("{}", e))?;
