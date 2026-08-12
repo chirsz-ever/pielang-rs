@@ -169,3 +169,34 @@ where
         Self { loc: None, erk }
     }
 }
+
+pub(crate) trait ToRef<T> {
+    fn to_ref(self) -> Ref<T>;
+}
+
+impl<T> ToRef<T> for T {
+    fn to_ref(self) -> Ref<T> {
+        Ref::new(self)
+    }
+}
+
+impl<T> ToRef<T> for &T
+where
+    T: Clone,
+{
+    fn to_ref(self) -> Ref<T> {
+        Ref::new(self.clone())
+    }
+}
+
+impl<T> ToRef<T> for &Ref<T> {
+    fn to_ref(self) -> Ref<T> {
+        self.clone()
+    }
+}
+
+impl<T> ToRef<T> for Ref<T> {
+    fn to_ref(self) -> Ref<T> {
+        self
+    }
+}

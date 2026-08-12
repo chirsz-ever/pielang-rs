@@ -11,6 +11,7 @@ use std::cell::RefCell;
 use std::fmt;
 use utils::LocatedError;
 use utils::Ref;
+use utils::ToRef;
 
 thread_local! {
     static INDENT: Cell<usize> = const { Cell::new(0) };
@@ -152,55 +153,83 @@ macro_rules! no_else {
 
 macro_rules! arrow {
     ($ty_a:expr, $ty_r:expr $(,)?) => {
-        core::Expr::Pi(Argument::Dummy, Ref::new($ty_a), Ref::new(shift_dbi(&$ty_r, 1)))
-    };
-    (ref $ty_a:expr, $ty_r:expr $(,)?) => {
-        core::Expr::Pi(Argument::Dummy, Ref::clone(&$ty_a), Ref::new(shift_dbi(&$ty_r, 1)))
-    };
-    ($ty_a:expr, ref $ty_r:expr $(,)?) => {
-        core::Expr::Pi(Argument::Dummy, Ref::new($ty_a), Ref::new(shift_dbi(&$ty_r, 1)))
-    };
-    (ref $ty_a:expr, ref $ty_r:expr $(,)?) => {
-        core::Expr::Pi(Argument::Dummy, Ref::clone(&$ty_a), Ref::new(shift_dbi(&$ty_r, 1)))
+        core::Expr::Pi(Argument::Dummy, ToRef::to_ref($ty_a), Ref::new(shift_dbi(&$ty_r, 1)))
     };
     ($ty_a:expr, $($e:tt)+) => {
         core::Expr::Pi(
             Argument::Dummy,
-            Ref::new($ty_a),
+            ToRef::to_ref($ty_a),
             Ref::new(shift_dbi(&arrow!($($e)+), 1)))
     };
-    (ref $ty_a:expr, $($e:tt)+) => {
+}
+
+/// 仿函数宏：构造 `Π` 类型表达式，替代冗长且易错的
+/// `Pi(Argument::Symbol(...), Ref::new(...), Ref::new(...))` 嵌套。
+///
+/// # 语法
+/// 形如 `pi!{ k : T_k, _ : T_inner => body }`：
+/// - `name : ty_a` 产生命名绑定（`Argument::Symbol(name)`）；
+/// - `_ : ty_a` 产生匿名绑定（`Argument::Dummy`）；
+/// - 多层绑定按从外到内先后列出，分隔用 `,`；
+/// - `=> body` 是 codomain，按"所有绑定都已进入后的视角"书写，
+///   与文件中其它手写 Pi 构造保持同样的语义；宏只在壳上工作，
+///   不会对 codomain 做 `shift_dbi`，因此 codomain 中的 dbi 仍然手写。
+///
+/// # 例
+/// ```notest
+/// let ty_s = pi! {
+///     k : I("Nat"),
+///     _ : app!(shift_dbi(&m_o, 1), var!("k", 0))
+///     => app!(shift_dbi(&m_o, 2), S("add1", vec![var!("k", 1)]))
+/// };
+/// ```
+macro_rules! pi {
+    // 单层命名
+    ($n1:ident : $t1:expr => $t_r:expr) => {
+        core::Expr::Pi(
+            Argument::Symbol(stringify!($n1).into()),
+            ToRef::to_ref($t1),
+            ToRef::to_ref($t_r),
+        )
+    };
+    // 单层匿名
+    (_ : $t1:expr => $t_r:expr) => {
         core::Expr::Pi(
             Argument::Dummy,
-            Ref::clone(&$ty_a),
-            Ref::new(shift_dbi(&arrow!($($e)+), 1)))
+            ToRef::to_ref($t1),
+            ToRef::to_ref($t_r),
+        )
+    };
+    // 多层：外层为命名
+    ($n1:ident : $t1:expr, $($rest:tt)+) => {
+        core::Expr::Pi(
+            Argument::Symbol(stringify!($n1).into()),
+            ToRef::to_ref($t1),
+            ToRef::to_ref(pi! { $($rest)+ }),
+        )
+    };
+    // 多层：外层为匿名
+    (_ : $t1:expr, $($rest:tt)+) => {
+        core::Expr::Pi(
+            Argument::Dummy,
+            ToRef::to_ref($t1),
+            ToRef::to_ref(pi! { $($rest)+ }),
+        )
+    };
+}
+
+macro_rules! var {
+    ($name:literal, $dbi:expr) => {
+        core::Expr::Identifier($name.into(), $dbi)
     };
 }
 
 macro_rules! app {
     ($f:expr, $a:expr $(,)?) => {
-        core::Expr::App(Ref::new($f), Ref::new($a))
-    };
-    (ref $f:expr, $a:expr $(,)?) => {
-        core::Expr::App(Ref::clone(&$f), Ref::new($a))
-    };
-    ($f:expr, ref $a:expr $(,)?) => {
-        core::Expr::App(Ref::new($f), Ref::clone(&$a))
-    };
-    (ref $f:expr, ref $a:expr $(,)?) => {
-        core::Expr::App(Ref::clone(&$f), Ref::clone(&$a))
+        core::Expr::App(ToRef::to_ref($f), ToRef::to_ref($a))
     };
     ($f:expr, $a:expr, $($tt:tt)+) => {
-        app!(core::Expr::App(Ref::new($f), Ref::new($a)), $($tt)+)
-    };
-    (ref $f:expr, $a:expr, $($tt:tt)+) => {
-        app!(core::Expr::App(Ref::clone(&$f), Ref::new($a)), $($tt)+)
-    };
-    ($f:expr, ref $a:expr, $($tt:tt)+) => {
-        app!(core::Expr::App(Ref::new($f), Ref::clone(&$a)), $($tt)+)
-    };
-    (ref $f:expr, ref $a:expr, $($tt:tt)+) => {
-        app!(core::Expr::App(Ref::clone(&$f), Ref::clone(&$a)), $($tt)+)
+        app!(core::Expr::App(ToRef::to_ref($f), ToRef::to_ref($a)), $($tt)+)
     };
 }
 
@@ -846,7 +875,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     let t_o = synthesize_with_type(t, &I("Nat"), env)?;
                     let (ty_b, b_o) = synthesize(b, env)?;
                     let ty_b = Ref::new(ty_b);
-                    let ty_s = arrow!(ref ty_b, ref ty_b);
+                    let ty_s = arrow!(&ty_b, &ty_b);
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     // FIXME: TLT 中需要多一层 the 表达式
                     (ty_b.as_ref().clone(), S("iter-Nat", vec![t_o, b_o, s_o]))
@@ -856,7 +885,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     let t_o = synthesize_with_type(t, &I("Nat"), env)?;
                     let (ty_b, b_o) = synthesize(b, env)?;
                     let ty_b = Ref::new(ty_b);
-                    let ty_s = arrow!(I("Nat"), ref ty_b, ref ty_b);
+                    let ty_s = arrow!(I("Nat"), &ty_b, &ty_b);
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     // FIXME: TLT 中需要多一层 the 表达式
                     (ty_b.as_ref().clone(), S("rec-Nat", vec![t_o, b_o, s_o]))
@@ -865,28 +894,20 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                 [Ident(_, "ind-Nat"), t, m, b, s] => {
                     let t_o = synthesize_with_type(t, &I("Nat"), env)?;
                     // m : Nat -> U
-                    let ty_m = Pi(Argument::Dummy, Ref::new(I("Nat")), Ref::new(U!()));
+                    let ty_m = arrow!(I("Nat"), U!());
                     let m_o = synthesize_with_type(m, &ty_m, env)?;
                     let m_o = Ref::new(m_o);
-                    let ty_b = normalize(&app!(ref m_o, Nat(0)), env);
+                    let ty_b = &app!(&m_o, Nat(0));
                     let b_o = synthesize_with_type(b, &ty_b, env)?;
                     // s : (k : Nat) -> (m k) -> (m (add1 k))
-                    let k: Ref<str> = "k".into();
-                    let ty_s = Pi(
-                        Argument::Symbol(k.clone()),
-                        Ref::new(I("Nat")),
-                        Ref::new(Pi(
-                            Argument::Dummy,
-                            Ref::new(app!(shift_dbi(&m_o, 1), Identifier(k.clone(), 0))),
-                            Ref::new(app!(shift_dbi(&m_o, 2), S("add1", vec![Identifier(k, 1)]))),
-                        )),
-                    );
+                    let ty_s = pi! {
+                        k : I("Nat"),
+                        _ : app!(shift_dbi(&m_o, 1), var!("k", 0))
+                        => app!(shift_dbi(&m_o, 2), bapp!("add1", var!("k", 1)))
+                    };
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
-                    let ty_o = app!(ref m_o, t_o.clone());
-                    (
-                        ty_o,
-                        S("ind-Nat", vec![t_o, m_o.as_ref().clone(), b_o, s_o]),
-                    )
+                    let ty_o = app!(&m_o, t_o.clone());
+                    (ty_o, bapp!("ind-Nat", t_o, m_o.as_ref().clone(), b_o, s_o))
                 }
                 // ListE-1
                 // (rec-List (the (List E) t) b s)
@@ -896,7 +917,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     try_match! { let S("List", [ty_e]) = &ty_t; env }
                     let (ty_b, b_o) = synthesize(b, env)?;
                     let ty_b = Ref::new(ty_b);
-                    let ty_s = arrow!(ty_e.clone(), ty_t.clone(), ref ty_b, ref ty_b,);
+                    let ty_s = arrow!(ty_e, &ty_t, &ty_b, &ty_b,);
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     let t_o = S("the", vec![ty_t, t_o]);
                     (ty_b.as_ref().clone(), S("rec-List", vec![t_o, b_o, s_o]))
@@ -909,34 +930,21 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     let ty_m = arrow!(ty_t.clone(), U!());
                     let m_o = synthesize_with_type(m, &ty_m, env)?;
                     let m_o = Ref::new(m_o);
-                    let ty_b = app!(ref m_o, I("nil"));
+                    let ty_b = app!(&m_o, I("nil"));
                     let b_o = synthesize_with_type(b, &ty_b, env)?;
                     // s : (x : E) -> (xs : List E) -> (m xs) -> (m (:: x xs))
-                    let ty_s = Pi(
-                        Argument::Symbol("x".into()),
-                        ty_e.clone().into(),
-                        Pi(
-                            Argument::Symbol("xs".into()),
-                            shift_dbi(&ty_t, 1).into(),
-                            Pi(
-                                Argument::Dummy,
-                                app!(shift_dbi(&m_o, 2), Identifier("xs".into(), 0)).into(),
-                                app!(
-                                    shift_dbi(&m_o, 3),
-                                    S(
-                                        "::",
-                                        vec![Identifier("x".into(), 2), Identifier("xs".into(), 1)]
-                                    )
-                                )
-                                .into(),
-                            )
-                            .into(),
+                    let ty_s = pi! {
+                        x : ty_e,
+                        xs : shift_dbi(&ty_t, 1),
+                        _ : app!(shift_dbi(&m_o, 2), var!("xs", 0))
+                        => app!(
+                            shift_dbi(&m_o, 3),
+                            bapp!("::", var!("x", 2), var!("xs", 1))
                         )
-                        .into(),
-                    );
+                    };
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     (
-                        app!(ref m_o, t_o.clone()),
+                        app!(&m_o, t_o.clone()),
                         S("ind-List", vec![t_o, m_o.as_ref().clone(), b_o, s_o]),
                     )
                 }
@@ -947,58 +955,26 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     try_match! { let S("Vec", [ty_e, n]) = &ty_t; env }
                     expr_check_same(&l_o, n, &I("Nat"), env)?;
                     // m : (k : Nat) -> (Vec E k) -> U
-                    let ty_m = Pi(
-                        Argument::Symbol("k".into()),
-                        I("Nat").into(),
-                        Pi(
-                            Argument::Dummy,
-                            bapp!("Vec", shift_dbi(ty_e, 1), Identifier("k".into(), 0)).into(),
-                            U!().into(),
-                        )
-                        .into(),
-                    );
+                    let ty_m = pi! {
+                        k : I("Nat"),
+                        _ : bapp!("Vec", shift_dbi(ty_e, 1), var!("k", 0))
+                        => U!()
+                    };
                     let m_o = synthesize_with_type(m, &ty_m, env)?;
                     let m_o = Ref::new(m_o);
-                    let ty_b = app!(ref m_o, Nat(0), I("vecnil"));
+                    let ty_b = app!(&m_o, Nat(0), I("vecnil"));
                     let b_o = synthesize_with_type(b, &ty_b, env)?;
                     // s : (k : Nat) -> (e : E) -> (es : (Vec E k)) -> (m k es) -> (m (add1 k) (vec:: e es))
-                    let ty_s = Pi(
-                        Argument::Symbol("k".into()),
-                        I("Nat").into(),
-                        Pi(
-                            Argument::Symbol("e".into()),
-                            shift_dbi(ty_e, 1).into(),
-                            Pi(
-                                Argument::Symbol("es".into()),
-                                bapp!("Vec", shift_dbi(ty_e, 2), Identifier("k".into(), 1)).into(),
-                                Pi(
-                                    Argument::Dummy,
-                                    app!(
-                                        shift_dbi(&m_o, 3),
-                                        Identifier("k".into(), 2),
-                                        Identifier("es".into(), 0)
-                                    )
-                                    .into(),
-                                    app!(
-                                        shift_dbi(&m_o, 4),
-                                        S("add1", vec![Identifier("k".into(), 3)]),
-                                        bapp!(
-                                            "vec::",
-                                            Identifier("e".into(), 2),
-                                            Identifier("es".into(), 1)
-                                        )
-                                    )
-                                    .into(),
-                                )
-                                .into(),
-                            )
-                            .into(),
-                        )
-                        .into(),
-                    );
+                    let ty_s = pi! {
+                        k : I("Nat"),
+                        e : shift_dbi(ty_e, 1),
+                        es : bapp!("Vec", shift_dbi(ty_e, 2), var!("k", 1)),
+                        _ : app!(shift_dbi(&m_o, 3),var!("k", 2),var!("es", 0))
+                        => app!(shift_dbi(&m_o, 4), S("add1", vec![var!("k", 3)]), bapp!("vec::",var!("e", 2),var!("es", 1)))
+                    };
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
                     (
-                        app!(ref m_o, l_o.clone(), t_o.clone()),
+                        app!(&m_o, l_o.clone(), t_o.clone()),
                         S("ind-Vec", vec![l_o, t_o, m_o.as_ref().clone(), b_o, s_o]),
                     )
                 }
@@ -1019,22 +995,19 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     let ty_m = arrow!(ty_t.clone(), U!());
                     let m_o = synthesize_with_type(m, &ty_m, env)?;
                     // b_l : (x : P) -> (m (left x))
-                    let ty_bl = Pi(
-                        Argument::Symbol("x".into()),
-                        ty_p.clone().into(),
-                        app!(shift_dbi(&m_o, 1), bapp!("left", Identifier("x".into(), 0))).into(),
-                    );
+                    let ty_bl = pi! {
+                        x : ty_p.clone()
+                        => app!(shift_dbi(&m_o, 1), bapp!("left", var!("x", 0)))
+                    };
                     let bl_o = synthesize_with_type(bl, &ty_bl, env)?;
                     // b_r : (x : S) -> (m (right x))
-                    let ty_br = Pi(
-                        Argument::Symbol("x".into()),
-                        ty_s.clone().into(),
-                        app!(
+                    let ty_br = pi! {
+                        x : ty_s.clone()
+                        => app!(
                             shift_dbi(&m_o, 1),
-                            bapp!("right", Identifier("x".into(), 0))
+                            bapp!("right", var!("x", 0))
                         )
-                        .into(),
-                    );
+                    };
                     let br_o = synthesize_with_type(br, &ty_br, env)?;
                     (
                         app!(m_o.clone(), t_o.clone()),
@@ -1064,9 +1037,9 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     let m_o = synthesize_with_type(m, &ty_m, env)?;
                     let m_o = Ref::new(m_o);
                     // b : m from
-                    let b_o = synthesize_with_type(b, &app!(ref m_o, from.clone()), env)?;
+                    let b_o = synthesize_with_type(b, &app!(&m_o, from.clone()), env)?;
                     (
-                        app!(ref m_o, to.clone()),
+                        app!(&m_o, to.clone()),
                         bapp!("replace", t_o, m_o.as_ref().clone(), b_o),
                     )
                 }
@@ -1090,8 +1063,8 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     let ty = bapp!(
                         "=",
                         shift_dbi_signed(ty_y, -1),
-                        app!(ref f_o, from.clone()),
-                        app!(ref f_o, to.clone())
+                        app!(&f_o, from.clone()),
+                        app!(&f_o, to.clone())
                     );
                     // CHECK: TLT 中需要多一个参数?
                     (ty, bapp!("cong", ty_x1.clone(), t_o, f_o.as_ref().clone()))
@@ -1129,10 +1102,10 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                 //     );
                 //     let m_o = synthesize_with_type(m, &ty_m, env)?;
                 //     let m_o = Ref::new(m_o);
-                //     let ty_b = app!(ref m_o, from.clone(), bapp!("same", from.clone()));
+                //     let ty_b = app!(m_o, from.clone(), bapp!("same", from.clone()));
                 //     let b_o = synthesize_with_type(b, &ty_b, env)?;
                 //     (
-                //         app!(ref m_o, to.clone(), t_o.clone()),
+                //         app!(m_o, to.clone(), t_o.clone()),
                 //         bapp!("ind-=", t_o, m_o.as_ref().clone(), b_o),
                 //     )
                 // }
