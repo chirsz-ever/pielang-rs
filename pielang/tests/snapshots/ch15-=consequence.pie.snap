@@ -1,0 +1,5 @@
+---
+source: pielang/tests/test.rs
+input_file: pielang/tests/snapshots/ch15-=consequence.pie
+---
+
