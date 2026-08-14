@@ -613,7 +613,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
     use ast::Expr::*;
     use core::Expr::*;
 
-    let ret = match e {
+    let mut ret = match e {
         // NatI-3, NatI-4
         NatLit(_, n) => (I("Nat"), Nat(*n)),
         // AtomI
@@ -1140,6 +1140,12 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
             }
         }
     };
+
+    ret.0 = normalize(&ret.0, env);
+
+    if matches!(ret.0, I("Trivial")) {
+        ret.1 = I("sole");
+    }
 
     tc_log_end!("=> (the {} {})", dpp(&ret.0, env), dpp(&ret.1, env));
     Ok(ret)
@@ -1774,12 +1780,11 @@ mod unit_tests {
         static STATEMENT_PARSER: crate::syntax::GlobalStatemantParser = crate::syntax::GlobalStatemantParser::new();
     }
 
-    fn check_syntax(e: &ast::Expr, env: &Env) -> Result<(), String>
-    {
+    fn check_syntax(e: &ast::Expr, env: &Env) -> Result<(), String> {
         let env_1 = env.iter().map(|(k, _)| (k.as_deref(), ())).collect();
         ast::check_syntax(e, &env_1).map_err(|e| format!("{}", e))?;
         Ok(())
-    } 
+    }
 
     fn do_synthesize(s: &str) -> String {
         let e = EXPR_PARSER.with(|p| p.parse(s)).expect("parse error");
@@ -1977,9 +1982,16 @@ mod unit_tests {
 
     #[test]
     fn normalize_by_type() {
-        insta::assert_snapshot!(do_statement("(the (Pi ((x Trivial)) (= Trivial x sole)) (lambda (x) (same sole)))"), @"(the (Π ((x Trivial)) (= Trivial x sole)) (λ (x) (same sole)))");
+        insta::assert_snapshot!(do_statement("(the (Pi ((x Trivial)) (= Trivial x sole)) (lambda (x) (same sole)))"), @"(the (→ Trivial (= Trivial sole sole)) (λ (x) (same sole)))");
         insta::assert_snapshot!(do_statement("(the (Pi ((x Absurd)(y Absurd)) (= Absurd x y)) (lambda (x y) (same x)))"), @"(the (Π ((x Absurd)(y Absurd)) (= Absurd x y)) (λ (x y) (same x)))");
 
         insta::assert_snapshot!(do_statement("(the (Pi ((p (Pair Atom Atom))) (= (Pair Atom Atom) p (cons (car p) (cdr p)))) (lambda (p) (same p)))"), @"(the (Π ((p (Pair Atom Atom))) (= (Pair Atom Atom) p p)) (λ (p) (same p)))");
+
+        insta::assert_snapshot!(do_statement("(check-same
+          (Pi ((x Trivial)) (= Trivial x sole))
+          (lambda (x) (same x))
+          (lambda (x) (same sole)))"), @"");
+        insta::assert_snapshot!(do_statement("(the (Pi ((x Trivial)) (= Trivial x sole)) (lambda (x) (same x)))"), @"(the (→ Trivial (= Trivial sole sole)) (λ (x) (same sole)))");
+        insta::assert_snapshot!(do_statement("(the (Pi ((x Trivial)) (= Trivial x sole)) (lambda (x) (same sole)))"), @"(the (→ Trivial (= Trivial sole sole)) (λ (x) (same sole)))");
     }
 }

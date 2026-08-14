@@ -293,6 +293,7 @@ fn interpret_file(source: &str, check_type_only: bool, env: &mut Env) -> anyhow:
                 process_expression(&expr, env, check_type_only)?;
             }
             CheckSame(_, ty, e1, e2) => {
+                // TODO: attach location information
                 process_check_same(&ty, &e1, &e2, env)?;
             }
         }
