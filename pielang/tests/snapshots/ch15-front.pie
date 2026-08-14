@@ -1,0 +1,102 @@
+#lang pie
+
+(claim =consequence
+  (→ Nat Nat
+    U))
+
+(define =consequence
+  (λ (n j)
+    (which-Nat n
+      (which-Nat j
+        Trivial
+        (λ (j-1)
+          Absurd))
+      (λ (n-1)
+        (which-Nat j
+          Absurd
+          (λ (j-1)
+            (= Nat n-1 j-1)))))))
+
+(claim =consequence-same
+  (Π ((n Nat))
+    (=consequence n n)))
+(define =consequence-same
+  (λ (n)
+    (ind-Nat n
+      (λ (k)
+        (=consequence k k))
+      sole
+      (λ (n-1 =consequence_n-1)
+        (same n-1)))))
+
+(claim use-Nat=
+  (Π ((n Nat)
+      (j Nat))
+  (→ (= Nat n j)
+    (=consequence n j))))
+(define use-Nat=
+  (λ (n j)
+    (λ (n=j)
+      (replace n=j
+        (λ (k)
+          (=consequence n k))
+        (=consequence-same n)))))
+
+(claim zero-not-add1
+  (Π ((n Nat))
+    (→ (= Nat zero (add1 n))
+      Absurd)))
+(define zero-not-add1
+  (λ (n)
+    (use-Nat= zero (add1 n))))
+
+(claim front
+  (Π ((E U)
+      (n Nat))
+    (→ (Vec E (add1 n))
+    E)))
+
+(claim mot-front
+  (Π ((E U)
+      (k Nat))
+  (→ (Vec E k)
+    U)))
+(define mot-front
+  (λ (E)
+    (λ (k es)
+      (Π ((j Nat))
+        (→ (= Nat k (add1 j))
+          E)))))
+
+(claim step-front
+  (Π ((E U)
+      (l Nat)
+      (e E)
+      (es (Vec E l)))
+    (→ (mot-front E
+        l
+        es)
+      (mot-front E
+        (add1 l)
+        (vec:: e es)))))
+(define step-front
+  (λ (E l e es)
+    (λ (front_es)
+      (λ (j eq)
+        e))))
+
+(define front
+  (λ (E l es)
+  ((ind-Vec (add1 l) es
+    (mot-front E)
+    (λ (j eq)
+      (ind-Absurd
+        (zero-not-add1 j eq)
+        E))
+    (step-front E))
+  l (same (add1 l)))))
+
+(front Atom 2
+  (vec:: 'sprinkles
+    (vec:: 'chocolate
+      (vec:: 'maple vecnil)))) ; 'sprinkles

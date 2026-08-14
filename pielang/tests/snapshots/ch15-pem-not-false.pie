@@ -1,0 +1,26 @@
+#lang pie
+
+(claim pem-not-false
+  (Π ((X U ))
+    (→ (→ (Either X
+            (→ X
+              Absurd))
+          Absurd)
+      Absurd)))
+(define pem-not-false
+  (λ (X)
+    (λ (pem-false)
+      (pem-false
+        (right
+          (λ (x)
+            (pem-false
+              (left x))))))))
+
+(claim Dec
+  (→ U
+    U))
+(define Dec
+  (λ (X)
+    (Either X
+      (→ X
+        Absurd))))
