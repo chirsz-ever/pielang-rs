@@ -1994,4 +1994,11 @@ mod unit_tests {
         insta::assert_snapshot!(do_statement("(the (Pi ((x Trivial)) (= Trivial x sole)) (lambda (x) (same x)))"), @"(the (→ Trivial (= Trivial sole sole)) (λ (x) (same sole)))");
         insta::assert_snapshot!(do_statement("(the (Pi ((x Trivial)) (= Trivial x sole)) (lambda (x) (same sole)))"), @"(the (→ Trivial (= Trivial sole sole)) (λ (x) (same sole)))");
     }
+
+    #[test]
+    fn extra_eq_eliminators() {
+        insta::assert_snapshot!(do_statement("(the
+            (Pi ((a Nat)(b Nat)(c Nat)) (-> (= Nat a b) (= Nat b c) (= Nat a c)))
+            (lambda (a b c eq-ab eq-bc) (trans eq-ab eq-bc)))"), @"(the (Π ((a Nat)(b Nat)(c Nat)) (→ (= Nat a b) (= Nat b c) (= Nat a c))) (λ (a b c eq-ab eq-bc) (trans eq-ab eq-bc)))");
+    }
 }
