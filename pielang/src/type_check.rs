@@ -185,7 +185,7 @@ macro_rules! arrow {
 /// ```
 macro_rules! pi {
     // 单层命名
-    ($n1:ident : $t1:expr => $t_r:expr) => {
+    ($n1:ident : $t1:expr $(,)? => $t_r:expr) => {
         core::Expr::Pi(
             Argument::Symbol(stringify!($n1).into()),
             ToRef::to_ref($t1),
@@ -193,7 +193,7 @@ macro_rules! pi {
         )
     };
     // 单层匿名
-    (_ : $t1:expr => $t_r:expr) => {
+    (_ : $t1:expr $(,)? => $t_r:expr) => {
         core::Expr::Pi(
             Argument::Dummy,
             ToRef::to_ref($t1),
@@ -1092,23 +1092,25 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     )
                 }
                 // EqE-5
-                // [Ident(_, "ind-="), t, m, b] => {
-                //     let (ty_t, t_o) = synthesize(t, env)?;
-                //     try_match! { let S("=", [ty_x, from, to]) = &ty_t; env }
-                //     let ty_m = pi!(
-                //         ty_x.clone(),
-                //         bapp!("=", ty_x.clone(), from.clone(), Identifier(0)),
-                //         U!()
-                //     );
-                //     let m_o = synthesize_with_type(m, &ty_m, env)?;
-                //     let m_o = Ref::new(m_o);
-                //     let ty_b = app!(m_o, from.clone(), bapp!("same", from.clone()));
-                //     let b_o = synthesize_with_type(b, &ty_b, env)?;
-                //     (
-                //         app!(m_o, to.clone(), t_o.clone()),
-                //         bapp!("ind-=", t_o, m_o.as_ref().clone(), b_o),
-                //     )
-                // }
+                [Ident(_, "ind-="), t, m, b] => {
+                    let (ty_t, t_o) = synthesize(t, env)?;
+                    try_match! { let S("=", [ty_x, from, to]) = &ty_t; env }
+                    // m : (x : X) -> (= X from x) -> U
+                    let ty_m = pi!(
+                        x : ty_x,
+                        _ : bapp!("=", shift_dbi(ty_x, 1), shift_dbi(from, 1), var!("x", 0)),
+                        => U!()
+                    );
+                    let m_o = synthesize_with_type(m, &ty_m, env)?;
+                    let m_o = Ref::new(m_o);
+                    // b : m from (same from)
+                    let ty_b = app!(&m_o, from, bapp!("same", from.clone()));
+                    let b_o = synthesize_with_type(b, &ty_b, env)?;
+                    (
+                        app!(&m_o, to.clone(), t_o.clone()),
+                        bapp!("ind-=", t_o, (*m_o).clone(), b_o),
+                    )
+                }
                 // FunE-1, FunE-2
                 [f, args @ ..] => {
                     assert!(!args.is_empty());
@@ -1460,6 +1462,26 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
                     some_if!(c => S("symm", vec![t_o]))
                 }
             }
+            // EqSame-tι, (trans (same e1) (same e2)) -> (same e2)
+            ("trans", [t1, t2]) => {
+                let (c1, t1_o) = norm!(t1, env);
+                let (c2, t2_o) = norm!(t2, env);
+                if let S("same", same_args1) = &t1_o
+                    && let [e1] = &same_args1[..]
+                    && let S("same", same_args2) = &t2_o
+                    && let [e2] = &same_args2[..]
+                    && expr_check_same(e1, e2, &I("ignore"), env).is_ok()
+                {
+                    Some(S("same", vec![e2.clone()]))
+                } else {
+                    some_if!(c1 || c2 => S("trans", vec![t1_o, t2_o]))
+                }
+            }
+            // EqSame-i-=ι, (ind-= (same e) m b) -> b
+            ("ind-=", [_t, _m, b]) => {
+                let b_o = normalize(b, env);
+                Some(b_o)
+            }
             // EitherSame-i-Eι1, EitherSame-i-Eι2
             ("ind-Either", [t, m, bl, br]) => {
                 let (c1, t) = norm!(t, env);
@@ -1751,6 +1773,11 @@ pub fn expr_check_same(
                     &env_ext_arg(env, &Argument::Dummy, &I("ignore")),
                 )?;
             }
+        }
+        // FunSame-apply
+        (App(f1, arg1), App(f2, arg2)) => {
+            expr_check_same(f1, f2, ct, env)?;
+            expr_check_same(arg1, arg2, ct, env)?;
         }
         (S(f1, args1), S(f2, args2)) if f1 == f2 && PIE_TYPE_CONSTRUCTORS.contains(f1) => {
             type_check_same(c1, c2, env)?;

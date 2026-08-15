@@ -83,8 +83,8 @@ ARGS:
   - [x] `replace`
   - [x] `cong`
   - [x] `symm`
-  - [ ] `trans`
-  - [ ] `ind-=`
+  - [x] `trans`
+  - [x] `ind-=`
 - [ ] Universe
 - [x] `claim` and `define`
 - [x] `check-same`

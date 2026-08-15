@@ -1,0 +1,35 @@
+#lang pie
+
+(claim my-cong
+  (Pi ((X U)
+       (Y U)
+       (from X)
+       (to X)
+       (t (= X from to))
+       (f (-> X Y)))
+    (= Y (f from) (f to))))
+
+(claim my-cong-mot
+  (Pi ((X U)
+       (Y U)
+       (from X)
+       (f (-> X Y))
+       (to X)
+       (t (= X from to)))
+    U))
+(define my-cong-mot
+  (lambda (X Y from f to t)
+    (= Y (f from) (f to))))
+
+(define my-cong
+  (lambda (X Y from to t f)
+    (ind-=
+      t
+      (my-cong-mot X Y from f)
+      (same (f from)))))
+
+; (a : Nat) -> (b : Nat) -> (= Nat a b) -> (= Nat (add1 a) (add1 b))
+(claim test-my-cong (Pi ((a Nat)(b Nat)(t (= Nat a b))) (= Nat (add1 a) (add1 b))))
+(define test-my-cong
+  (lambda (a b t)
+    (my-cong Nat Nat a b t (lambda (x) (add1 x)))))
