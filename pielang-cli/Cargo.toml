@@ -10,7 +10,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-pielang = { version = "0.2.0", path = "../pielang" }
+pielang = { version = "0.3.0", path = "../pielang" }
 lalrpop-util = { workspace = true }
 structopt = "0.3"
 rustyline = "18.0"
