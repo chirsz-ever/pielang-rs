@@ -277,7 +277,6 @@ impl std::ops::Drop for IndentGuard {
 }
 
 /// depth 表示当前作用域深度
-/// TODO: 单元测试
 fn shift_dbi_d(e: &core::Expr, inc: isize, depth: usize) -> core::Expr {
     use core::Expr::*;
     if inc == 0 {
@@ -326,17 +325,15 @@ fn shift_dbi_signed(e: &core::Expr, inc: isize) -> core::Expr {
     shift_dbi_d(e, inc, 0)
 }
 
-/// 执行 beta 变换 expr[e/var]，将 expr 中自由出现的 var 替换为 e，depth 表示当前作用域深度。
-/// TODO: 也许可以统一 var 和 depth 参数?
-/// TODO: 单元测试
-fn substitute(expr: &core::Expr, var: usize, e: &core::Expr, depth: usize) -> core::Expr {
+/// 执行 beta 变换 `expr[var -> e]`，将 expr 中自由出现的 var 替换为 e
+fn substitute(expr: &core::Expr, var: usize, e: &core::Expr) -> core::Expr {
     use core::Expr::*;
 
     match expr {
         Nat(_) | Atom(_) | I(_) => expr.clone(),
         Identifier(i, idx) => {
             if *idx == var {
-                shift_dbi(e, depth)
+                shift_dbi(e, var)
             } else if *idx > var {
                 Identifier(i.clone(), idx - 1)
             } else {
@@ -344,36 +341,32 @@ fn substitute(expr: &core::Expr, var: usize, e: &core::Expr, depth: usize) -> co
             }
         }
         S(bid, args) => {
-            let args_o = args
-                .iter()
-                .map(|arg| substitute(arg, var, e, depth))
-                .collect();
+            let args_o = args.iter().map(|arg| substitute(arg, var, e)).collect();
             S(bid, args_o)
         }
         App(f, a) => {
-            let f_o = substitute(f, var, e, depth);
-            let a_o = substitute(a, var, e, depth);
+            let f_o = substitute(f, var, e);
+            let a_o = substitute(a, var, e);
             App(Ref::new(f_o), Ref::new(a_o))
         }
         Pi(a, ty_a, ty_r) => {
-            let ty_a_o = substitute(ty_a, var, e, depth);
-            let ty_r_o = substitute(ty_r, var + 1, e, depth + 1);
+            let ty_a_o = substitute(ty_a, var, e);
+            let ty_r_o = substitute(ty_r, var + 1, e);
             Pi(a.clone(), Ref::new(ty_a_o), Ref::new(ty_r_o))
         }
         Sigma(a, ty_a, ty_d) => {
-            let ty_a_o = substitute(ty_a, var, e, depth);
-            let ty_d_o = substitute(ty_d, var + 1, e, depth + 1);
+            let ty_a_o = substitute(ty_a, var, e);
+            let ty_d_o = substitute(ty_d, var + 1, e);
             Sigma(a.clone(), Ref::new(ty_a_o), Ref::new(ty_d_o))
         }
         Lambda(a, body) => {
-            let body_o = substitute(body, var + 1, e, depth + 1);
+            let body_o = substitute(body, var + 1, e);
             Lambda(a.clone(), Ref::new(body_o))
         }
     }
 }
 
 /// 对常用的 Argument 下 beta 变换简写
-/// TODO: 单元测试
 /// TODO: 无需替换时的优化
 #[inline]
 fn substitute_beta_arg(body: &core::Expr, arg: &Argument, e: &core::Expr, env: &Env) -> core::Expr {
@@ -385,7 +378,7 @@ fn substitute_beta_arg(body: &core::Expr, arg: &Argument, e: &core::Expr, env: &
     );
 
     // 即使 arg 在 body 中不出现，也要执行自由变量的 shift 操作
-    let ret = substitute(body, 0, e, 0);
+    let ret = substitute(body, 0, e);
 
     tc_log_end!("=> {}", dpp(&ret, env));
 
@@ -1261,7 +1254,6 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
                 }
             }
             // ΣSame-η, (cons (car p) (cdr p)) -> p
-            // FIXME: expr_check_same 不需要 ct 参数?
             ("cons", [a, d]) => {
                 let (c1, a_o) = norm!(a, env);
                 let (c2, d_o) = norm!(d, env);
@@ -1401,7 +1393,6 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
                 }
             }
             // VecSame-i-Vι1, VecSame-i-Vι2
-            // TODO: test
             ("ind-Vec", [l, t, m, b, s]) => {
                 let (c1, l) = norm!(l, env);
                 let (c2, t) = norm!(t, env);
