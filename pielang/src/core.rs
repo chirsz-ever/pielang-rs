@@ -301,41 +301,6 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum ErrorKind {
-    IllegalArgumentNumber {
-        caller: String,
-        valid_argc: usize,
-        current_argc: usize,
-    },
-    IllegalArgumentType {
-        caller: String,
-        valid_argt: String,
-    },
-}
-
-impl fmt::Display for ErrorKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        use ErrorKind::*;
-        match self {
-            IllegalArgumentNumber {
-                caller,
-                valid_argc,
-                current_argc,
-            } => write!(
-                f,
-                "`{}` should take {} arguments, but here is {} arguments.",
-                caller, valid_argc, current_argc
-            ),
-            IllegalArgumentType { caller, valid_argt } => write!(
-                f,
-                "`{}` should take argument of type {}, but here is not.",
-                caller, valid_argt
-            ),
-        }
-    }
-}
-
 pub type Error = LocatedError<ErrorKind>;
 
 /// 标识符，`Dummy` 用于表示参数不在之后出现，例如从 `→` `Pair` 转换为 `Π` `Σ` 时。

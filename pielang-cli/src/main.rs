@@ -3,7 +3,7 @@ use pielang::ast::{Id, check_syntax};
 use pielang::core::DBIPPrint as dpp;
 use pielang::core::Expr::Nat;
 use pielang::type_check as tc;
-use pielang::utils::{LocatedError, Span};
+use pielang::utils::{ErrorKind, LocatedError, Span};
 use rustyline::KeyEvent;
 use std::fs::File;
 use std::io::{self, prelude::*};
@@ -13,14 +13,8 @@ type Env = tc::Env;
 
 /// 尝试从 anyhow::Error 中提取 LocatedError 的位置与不含 Span 的消息文本。
 fn locate_error(err: &anyhow::Error) -> Option<(Option<Span>, String)> {
-    if let Some(e) = err.downcast_ref::<LocatedError<pielang::core::ErrorKind>>() {
+    if let Some(e) = err.downcast_ref::<LocatedError<ErrorKind>>() {
         return Some((e.loc, format!("{}", e.erk)));
-    }
-    if let Some(e) = err.downcast_ref::<LocatedError<tc::ErrorKind>>() {
-        return Some((e.loc, format!("{}", e.erk)));
-    }
-    if let Some(e) = err.downcast_ref::<LocatedError<String>>() {
-        return Some((e.loc, e.erk.clone()));
     }
     None
 }

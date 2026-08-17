@@ -1,4 +1,4 @@
-use crate::utils::{LocatedError, Ref, Span, StackMap};
+use crate::utils::{ErrorKind, LocatedError, Ref, Span, StackMap};
 use core::fmt;
 
 /// 顶层语句允许 define 语句、claim 语句, check-same 语句和表达式。
@@ -195,7 +195,7 @@ pub const PIE_BUILTIN_FUNCTIONS: [(&str, usize); 32] = [
 /// 关键字
 pub const PIE_KEYWORDS: [&str; 8] = ["quote", "Π", "Pi", "∏", "Σ", "Sigma", "λ", "lambda"];
 
-pub fn to_statement<'a>(e: Expr<'a>) -> Result<GlobalStatemant<'a>, LocatedError<String>> {
+pub fn to_statement<'a>(e: Expr<'a>) -> Result<GlobalStatemant<'a>, LocatedError<ErrorKind>> {
     use Expr::*;
     use GlobalStatemant::*;
     let stat = match e {
@@ -205,19 +205,25 @@ pub fn to_statement<'a>(e: Expr<'a>) -> Result<GlobalStatemant<'a>, LocatedError
                 let Ok([_, id, ty]): Result<[Expr<'_>; _], _> = exprs.try_into() else {
                     return Err(LocatedError {
                         loc: Some(span),
-                        erk: format!("claim: expect 2 arguments, got {}", args),
+                        erk: ErrorKind::InvalidClaim {
+                            reason: format!("expect 2 arguments, got {}", args),
+                        },
                     });
                 };
                 let Ident(span_id, id) = id else {
                     return Err(LocatedError {
                         loc: Some(id.span()),
-                        erk: "claim: expect identifier".to_string(),
+                        erk: ErrorKind::InvalidClaim {
+                            reason: "expect identifier".to_string(),
+                        },
                     });
                 };
                 if is_builtin_name(id) {
                     return Err(LocatedError {
                         loc: Some(span_id),
-                        erk: format!("claim: {} is not a valid Pie name", id),
+                        erk: ErrorKind::InvalidName {
+                            name: id.to_string(),
+                        },
                     });
                 }
                 Claim(span, crate::ast::Id(span_id, id), ty)
@@ -227,19 +233,25 @@ pub fn to_statement<'a>(e: Expr<'a>) -> Result<GlobalStatemant<'a>, LocatedError
                 let Ok([_, id, body]): Result<[Expr<'_>; _], _> = exprs.try_into() else {
                     return Err(LocatedError {
                         loc: Some(span),
-                        erk: format!("define: expect 2 arguments, got {}", args),
+                        erk: ErrorKind::InvalidDefine {
+                            reason: format!("expect 2 arguments, got {}", args),
+                        },
                     });
                 };
                 let Ident(span_id, id) = id else {
                     return Err(LocatedError {
                         loc: Some(id.span()),
-                        erk: "define: expect identifier".to_string(),
+                        erk: ErrorKind::InvalidDefine {
+                            reason: "expect identifier".to_string(),
+                        },
                     });
                 };
                 if is_builtin_name(id) {
                     return Err(LocatedError {
                         loc: Some(span_id),
-                        erk: format!("define: {} is not a valid Pie name", id),
+                        erk: ErrorKind::InvalidName {
+                            name: id.to_string(),
+                        },
                     });
                 }
                 Define(span, crate::ast::Id(span_id, id), body)
@@ -249,7 +261,9 @@ pub fn to_statement<'a>(e: Expr<'a>) -> Result<GlobalStatemant<'a>, LocatedError
                 let Ok([_, ty, e1, e2]): Result<[Expr<'_>; _], _> = exprs.try_into() else {
                     return Err(LocatedError {
                         loc: Some(span),
-                        erk: format!("check-same: expect 3 arguments, got {}", args),
+                        erk: ErrorKind::InvalidCheckSame {
+                            reason: format!("expect 3 arguments, got {}", args),
+                        },
                     });
                 };
                 CheckSame(span, ty, e1, e2)
@@ -269,12 +283,14 @@ pub fn is_builtin_name(name: &str) -> bool {
 
 pub fn check_builtin_names<'a>(
     args: impl IntoIterator<Item = &'a Id<'a>>,
-) -> Result<(), LocatedError<String>> {
+) -> Result<(), LocatedError<ErrorKind>> {
     for Id(span, id) in args {
         if is_builtin_name(id) {
             return Err(LocatedError {
                 loc: Some(*span),
-                erk: format!("{} is not a valid Pie name", id),
+                erk: ErrorKind::InvalidName {
+                    name: id.to_string(),
+                },
             });
         }
     }
@@ -287,7 +303,7 @@ pub fn check_builtin_names<'a>(
 pub fn check_syntax<'a>(
     expr: &'a Expr<'a>,
     env: &StackMap<Option<&'a str>, ()>,
-) -> Result<(), LocatedError<String>> {
+) -> Result<(), LocatedError<ErrorKind>> {
     use crate::ast::Id;
     use Expr::*;
     'm: {
@@ -300,7 +316,11 @@ pub fn check_syntax<'a>(
                 if let Some((_, argc)) = PIE_BUILTIN_FUNCTIONS.iter().find(|(i, _)| i == id) {
                     return Err(LocatedError {
                         loc: Some(*sp),
-                        erk: format!("{} need {} arguments", id, argc),
+                        erk: ErrorKind::IllegalArgumentNumber {
+                            caller: id.to_string(),
+                            valid_argc: *argc,
+                            current_argc: 0,
+                        },
                     });
                 }
                 if !env
@@ -309,7 +329,7 @@ pub fn check_syntax<'a>(
                 {
                     return Err(LocatedError {
                         loc: Some(*sp),
-                        erk: format!("undefined identifier: {}", id),
+                        erk: ErrorKind::UndefinedVariable(id.to_string()),
                     });
                 }
             }
@@ -324,12 +344,11 @@ pub fn check_syntax<'a>(
                             if args.len() != *argn {
                                 return Err(LocatedError {
                                     loc: Some(*sp),
-                                    erk: format!(
-                                        "{} need {} arguments, got {}",
-                                        id,
-                                        argn,
-                                        args.len()
-                                    ),
+                                    erk: ErrorKind::IllegalArgumentNumber {
+                                        caller: id.to_string(),
+                                        valid_argc: *argn,
+                                        current_argc: args.len(),
+                                    },
                                 });
                             }
                             exprs_to_check = args;
@@ -338,7 +357,7 @@ pub fn check_syntax<'a>(
                         else if PIE_BUILTIN_SINGLETONS.contains(id) {
                             return Err(LocatedError {
                                 loc: Some(*sp_id),
-                                erk: format!("{} cannot be caller", id),
+                                erk: ErrorKind::InvalidCaller(id.to_string()),
                             });
                         } else {
                             exprs_to_check = &exprs[..];
@@ -419,7 +438,7 @@ mod unit_test {
         insta::assert_snapshot!(parse_stat("(claim x)"), @"Error: 0:9: claim: expect 2 arguments, got 1");
         insta::assert_snapshot!(parse_stat("(claim x y z)"), @"Error: 0:13: claim: expect 2 arguments, got 3");
         insta::assert_snapshot!(parse_stat("(claim claim Nat)"), @"OK");
-        insta::assert_snapshot!(parse_stat("(claim U Nat)"), @"Error: 7:8: claim: U is not a valid Pie name");
+        insta::assert_snapshot!(parse_stat("(claim U Nat)"), @"Error: 7:8: U is not a valid Pie name");
         // (define varname expression)
         insta::assert_snapshot!(parse_stat("(define x 0)"), @"OK");
         insta::assert_snapshot!(parse_stat("(define x)"), @"Error: 0:10: define: expect 2 arguments, got 1");
@@ -559,12 +578,12 @@ mod unit_test {
 
         // checking built-in names have correct number of arguments
         insta::assert_snapshot!(parse_expression("(the Nat 0)"), @"OK");
-        insta::assert_snapshot!(parse_expression("(the Nat)"), @"Error: 0:9: the need 2 arguments, got 1");
-        insta::assert_snapshot!(parse_expression("(the Nat 0 1)"), @"Error: 0:13: the need 2 arguments, got 3");
+        insta::assert_snapshot!(parse_expression("(the Nat)"), @"Error: 0:9: `the` should take 2 arguments, but here is 1 arguments.");
+        insta::assert_snapshot!(parse_expression("(the Nat 0 1)"), @"Error: 0:13: `the` should take 2 arguments, but here is 3 arguments.");
         insta::assert_snapshot!(parse_expression("(add1 0)"), @"OK");
-        insta::assert_snapshot!(parse_expression("add1"), @"Error: 0:4: add1 need 1 arguments");
+        insta::assert_snapshot!(parse_expression("add1"), @"Error: 0:4: `add1` should take 1 arguments, but here is 0 arguments.");
         insta::assert_snapshot!(parse_expression("(zero 0)"), @"Error: 1:5: zero cannot be caller");
-        insta::assert_snapshot!(parse_expression("(λ (x) add1)"), @"Error: 8:12: add1 need 1 arguments");
+        insta::assert_snapshot!(parse_expression("(λ (x) add1)"), @"Error: 8:12: `add1` should take 1 arguments, but here is 0 arguments.");
         // checking no unbound variables
         insta::assert_snapshot!(parse_expression("x"), @"Error: 0:1: undefined identifier: x");
         insta::assert_snapshot!(parse_expression("(λ (x) x)"), @"OK");

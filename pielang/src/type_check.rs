@@ -8,7 +8,7 @@ use core::Argument;
 use core::DBIPPrint as dpp;
 use std::cell::Cell;
 use std::cell::RefCell;
-use std::fmt;
+use utils::ErrorKind;
 use utils::LocatedError;
 use utils::Ref;
 use utils::ToRef;
@@ -85,34 +85,6 @@ macro_rules! throw {
             erk: $e,
         })
     };
-}
-
-#[derive(Debug, Clone)]
-pub enum ErrorKind {
-    TypeNotMatch { expected: String, given: String },
-    CannotInferType { expr: String },
-    NotSame(String, String, String),
-    NotType(String),
-}
-
-impl fmt::Display for ErrorKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use ErrorKind::*;
-        match self {
-            TypeNotMatch { expected, given } => {
-                write!(f, "Expected {} but given {}", expected, given)
-            }
-            CannotInferType { expr } => {
-                write!(f, "Can't determine the type of {}", expr)
-            }
-            NotSame(x, y, t) => {
-                write!(f, "The expressions {} and {} are not the same {}", x, y, t)
-            }
-            NotType(x) => {
-                write!(f, "{} is not a type", x)
-            }
-        }
-    }
 }
 
 macro_rules! try_match {
@@ -1597,11 +1569,11 @@ fn type_check_same(ty1: &core::Expr, ty2: &core::Expr, env: &Env) -> Result<(), 
 
     macro_rules! throw_ne {
         () => {
-            throw!(ErrorKind::NotSame(
-                dpp(ty1_i, env).to_string(),
-                dpp(ty2_i, env).to_string(),
-                "(U _)".to_owned(),
-            ))
+            throw!(ErrorKind::NotSame {
+                e1: dpp(ty1_i, env).to_string(),
+                e2: dpp(ty2_i, env).to_string(),
+                ty: "(U _)".to_owned(),
+            })
         };
     }
 
@@ -1697,11 +1669,11 @@ pub fn expr_check_same(
 
     macro_rules! throw_ne {
         () => {
-            throw!(ErrorKind::NotSame(
-                dpp(c1, env).to_string(),
-                dpp(c2, env).to_string(),
-                dpp(ct, env).to_string(),
-            ))
+            throw!(ErrorKind::NotSame {
+                e1: dpp(c1, env).to_string(),
+                e2: dpp(c2, env).to_string(),
+                ty: dpp(ct, env).to_string(),
+            })
         };
     }
 
@@ -1917,8 +1889,8 @@ mod unit_tests {
         insta::assert_snapshot!(do_synthesize("(the sole 'a)"), @"Error: 5:9: sole is not a type");
         insta::assert_snapshot!(do_synthesize("(the Nat U)"), @"Error: 9:10: Expected Nat but given (U 1)");
         insta::assert_snapshot!(do_synthesize("(the U 'a)"), @"Error: 7:9: Expected U but given Atom");
-        insta::assert_snapshot!(do_synthesize("(ind-Either (the (Either Nat Atom) (left 0)) (λ (x) x) (λ (y) y))"), @"Error: 0:67: ind-Either need 4 arguments, got 3");
-        insta::assert_snapshot!(do_synthesize("(ind-Either (the (Either Nat Atom) (right 'a)) (λ (x) x) (λ (y) y))"), @"Error: 0:69: ind-Either need 4 arguments, got 3");
+        insta::assert_snapshot!(do_synthesize("(ind-Either (the (Either Nat Atom) (left 0)) (λ (x) x) (λ (y) y))"), @"Error: 0:67: `ind-Either` should take 4 arguments, but here is 3 arguments.");
+        insta::assert_snapshot!(do_synthesize("(ind-Either (the (Either Nat Atom) (right 'a)) (λ (x) x) (λ (y) y))"), @"Error: 0:69: `ind-Either` should take 4 arguments, but here is 3 arguments.");
     }
 
     #[test]

@@ -136,6 +136,96 @@ pub fn map_result<T, U, E>(
     Ok(v)
 }
 
+#[derive(Debug, Clone)]
+pub enum ErrorKind {
+    TypeNotMatch {
+        expected: String,
+        given: String,
+    },
+    CannotInferType {
+        expr: String,
+    },
+    NotSame {
+        e1: String,
+        e2: String,
+        ty: String,
+    },
+    NotType(String),
+    IllegalArgumentNumber {
+        caller: String,
+        valid_argc: usize,
+        current_argc: usize,
+    },
+    IllegalArgumentType {
+        caller: String,
+        valid_argt: String,
+    },
+    InvalidClaim {
+        reason: String,
+    },
+    InvalidDefine {
+        reason: String,
+    },
+    InvalidCheckSame {
+        reason: String,
+    },
+    InvalidName {
+        name: String,
+    },
+    UndefinedVariable(String),
+    InvalidCaller(String),
+    ParseNatFailed,
+    InvalidAtom,
+}
+
+impl fmt::Display for ErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use ErrorKind::*;
+        match self {
+            TypeNotMatch { expected, given } => {
+                write!(f, "Expected {} but given {}", expected, given)
+            }
+            CannotInferType { expr } => {
+                write!(f, "Can't determine the type of {}", expr)
+            }
+            NotSame { e1, e2, ty } => {
+                write!(
+                    f,
+                    "The expressions {} and {} are not the same {}",
+                    e1, e2, ty
+                )
+            }
+            NotType(x) => {
+                write!(f, "{} is not a type", x)
+            }
+            IllegalArgumentNumber {
+                caller,
+                valid_argc,
+                current_argc,
+            } => write!(
+                f,
+                "`{}` should take {} arguments, but here is {} arguments.",
+                caller, valid_argc, current_argc
+            ),
+            IllegalArgumentType { caller, valid_argt } => write!(
+                f,
+                "`{}` should take argument of type {}, but here is not.",
+                caller, valid_argt
+            ),
+            InvalidClaim { reason } => write!(f, "claim: {}", reason),
+            InvalidDefine { reason } => write!(f, "define: {}", reason),
+            InvalidCheckSame { reason } => write!(f, "check-same: {}", reason),
+            InvalidName { name } => {
+                write!(f, "{} is not a valid Pie name", name)
+            }
+            UndefinedVariable(id) => write!(f, "undefined identifier: {}", id),
+            InvalidCaller(id) => write!(f, "{} cannot be caller", id),
+            ParseNatFailed => write!(f, "parse natural number failed"),
+            InvalidAtom => write!(f, "Atoms can only consist of letters and hyphens"),
+        }
+    }
+}
+
 /// 带有位置信息的错误类型
 #[derive(Debug, Clone, Error)]
 pub struct LocatedError<ErrorKind>

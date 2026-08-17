@@ -1,11 +1,11 @@
 use crate::ast::*;
-use crate::utils::{Ref, Span, LocatedError};
+use crate::utils::{Ref, Span, LocatedError, ErrorKind};
 use lalrpop_util::ParseError;
 
 grammar;
 
 extern {
-    type Error = LocatedError<String>;
+    type Error = LocatedError<ErrorKind>;
 }
 
 // 词法解析器
@@ -53,7 +53,7 @@ pub Expr: Expr<'input> = {
             Err(_) => Err(ParseError::User {
                 error: LocatedError {
                     loc: Some(Span(l, r)),
-                    erk: "parse natural number failed".to_string(),
+                    erk: ErrorKind::ParseNatFailed,
                 }
             }),
         }
@@ -107,7 +107,7 @@ AtomIdent: &'input str = {
             .ok_or_else(|| ParseError::User {
                 error: LocatedError {
                     loc: Some(Span(l, r)),
-                    erk: "Atoms can only consist of letters and hyphens".to_string(),
+                    erk: ErrorKind::InvalidAtom,
                 }
             })
     }
