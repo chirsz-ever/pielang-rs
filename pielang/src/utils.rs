@@ -1,5 +1,4 @@
 use std::fmt;
-use thiserror::Error;
 
 /// 引用类型，当前仅为 `std::rc::Rc`，未来或可使用 GC。
 pub type Ref<T> = std::rc::Rc<T>;
@@ -136,98 +135,57 @@ pub fn map_result<T, U, E>(
     Ok(v)
 }
 
-#[derive(Debug, Clone)]
+#[derive(thiserror::Error, Debug, Clone)]
 pub enum ErrorKind {
-    TypeNotMatch {
-        expected: String,
-        given: String,
-    },
-    CannotInferType {
-        expr: String,
-    },
-    NotSame {
-        e1: String,
-        e2: String,
-        ty: String,
-    },
+    #[error("Expected {expected} but given {given}")]
+    TypeNotMatch { expected: String, given: String },
+
+    #[error("Can't determine the type of {expr}")]
+    CannotInferType { expr: String },
+
+    #[error("The expressions {e1} and {e2} are not the same {ty}")]
+    NotSame { e1: String, e2: String, ty: String },
+
+    #[error("{0} is not a type")]
     NotType(String),
+
+    #[error("`{caller}` should take {valid_argc} arguments, but here is {current_argc} arguments.")]
     IllegalArgumentNumber {
         caller: String,
         valid_argc: usize,
         current_argc: usize,
     },
-    IllegalArgumentType {
-        caller: String,
-        valid_argt: String,
-    },
-    InvalidClaim {
-        reason: String,
-    },
-    InvalidDefine {
-        reason: String,
-    },
-    InvalidCheckSame {
-        reason: String,
-    },
-    InvalidName {
-        name: String,
-    },
+
+    #[error("`{caller}` should take argument of type {valid_argt}, but here is not.")]
+    IllegalArgumentType { caller: String, valid_argt: String },
+
+    #[error("claim: {reason}")]
+    InvalidClaim { reason: String },
+
+    #[error("define: {reason}")]
+    InvalidDefine { reason: String },
+
+    #[error("check-same: {reason}")]
+    InvalidCheckSame { reason: String },
+
+    #[error("{name} is not a valid Pie name")]
+    InvalidName { name: String },
+
+    #[error("undefined identifier: {0}")]
     UndefinedVariable(String),
+
+    #[error("{0} cannot be caller")]
     InvalidCaller(String),
+
+    #[error("parse natural number failed")]
     ParseNatFailed,
+
+    #[error("Atoms can only consist of letters and hyphens")]
     InvalidAtom,
 }
 
-impl fmt::Display for ErrorKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use ErrorKind::*;
-        match self {
-            TypeNotMatch { expected, given } => {
-                write!(f, "Expected {} but given {}", expected, given)
-            }
-            CannotInferType { expr } => {
-                write!(f, "Can't determine the type of {}", expr)
-            }
-            NotSame { e1, e2, ty } => {
-                write!(
-                    f,
-                    "The expressions {} and {} are not the same {}",
-                    e1, e2, ty
-                )
-            }
-            NotType(x) => {
-                write!(f, "{} is not a type", x)
-            }
-            IllegalArgumentNumber {
-                caller,
-                valid_argc,
-                current_argc,
-            } => write!(
-                f,
-                "`{}` should take {} arguments, but here is {} arguments.",
-                caller, valid_argc, current_argc
-            ),
-            IllegalArgumentType { caller, valid_argt } => write!(
-                f,
-                "`{}` should take argument of type {}, but here is not.",
-                caller, valid_argt
-            ),
-            InvalidClaim { reason } => write!(f, "claim: {}", reason),
-            InvalidDefine { reason } => write!(f, "define: {}", reason),
-            InvalidCheckSame { reason } => write!(f, "check-same: {}", reason),
-            InvalidName { name } => {
-                write!(f, "{} is not a valid Pie name", name)
-            }
-            UndefinedVariable(id) => write!(f, "undefined identifier: {}", id),
-            InvalidCaller(id) => write!(f, "{} cannot be caller", id),
-            ParseNatFailed => write!(f, "parse natural number failed"),
-            InvalidAtom => write!(f, "Atoms can only consist of letters and hyphens"),
-        }
-    }
-}
-
 /// 带有位置信息的错误类型
-#[derive(Debug, Clone, Error)]
+#[derive(thiserror::Error, Debug, Clone)]
 pub struct LocatedError<ErrorKind>
 where
     ErrorKind: fmt::Debug + fmt::Display,

@@ -15,7 +15,7 @@ lalrpop = "0.23.1"
 
 [dependencies]
 lalrpop-util = { workspace = true }
-thiserror = "1.0"
+thiserror = "2.0"
 log = { workspace = true }
 regex = { workspace = true }
 
