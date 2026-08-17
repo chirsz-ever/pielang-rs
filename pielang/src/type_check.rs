@@ -873,8 +873,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     (ty_o, bapp!("ind-Nat", t_o, m_o.as_ref().clone(), b_o, s_o))
                 }
                 // ListE-1
-                // (rec-List (the (List E) t) b s)
-                // TODO: 搞清该怎么改
+                // (rec-List t b s)
                 [Ident(_, "rec-List"), t, b, s] => {
                     let (ty_t, t_o) = synthesize(t, env)?;
                     try_match! { let S("List", [ty_e]) = &ty_t; env }
@@ -882,7 +881,7 @@ pub fn synthesize(e: &ast::Expr, env: &Env) -> Result<(core::Expr, core::Expr), 
                     let ty_b = Ref::new(ty_b);
                     let ty_s = arrow!(ty_e, &ty_t, &ty_b, &ty_b,);
                     let s_o = synthesize_with_type(s, &ty_s, env)?;
-                    let t_o = S("the", vec![ty_t, t_o]);
+                    // let t_o = S("the", vec![ty_t, t_o]);
                     (ty_b.as_ref().clone(), S("rec-List", vec![t_o, b_o, s_o]))
                 }
                 // ListE-2
@@ -1282,8 +1281,7 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
             }
             // ListSame-r-Lι1, ListSame-r-Lι2
             ("rec-List", [t, b, s]) => {
-                no_else!( let (c1, S("the", t_args)) = norm!(t, env) );
-                no_else!( let [ty_t, t_o] = &t_args[..] );
+                let (c1, t_o) = norm!(t, env);
                 let (c2, b_o) = norm!(b, env);
                 let (c3, s_o) = norm!(s, env);
                 if let I("nil") = &t_o {
@@ -1291,13 +1289,11 @@ fn normalize_once(e: &core::Expr, env: &Env) -> Option<core::Expr> {
                 } else if let S("::", args) = &t_o
                     && let [e, es] = &args[..]
                 {
-                    let rec_es = S(
-                        "rec-List",
-                        vec![S("the", vec![ty_t.clone(), es.clone()]), b_o, s_o.clone()],
-                    );
+                    // (rec-List (:: e es) b s) -> (s e es (rec-List es b s))
+                    let rec_es = bapp!("rec-List", es.clone(), b_o, s_o.clone());
                     Some(app!(s_o, e.clone(), es.clone(), rec_es))
                 } else {
-                    some_if!(c1 || c2 || c3 => S("rec-List", vec![S("the", t_args), b_o, s_o]))
+                    some_if!(c1 || c2 || c3 => bapp!("rec-List", t_o, b_o, s_o))
                 }
             }
             // ListSame-i-Lι1, ListSame-i-Lι2
