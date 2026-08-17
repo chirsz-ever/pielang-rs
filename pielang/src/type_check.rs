@@ -8,8 +8,8 @@ use core::Argument;
 use core::DBIPPrint as dpp;
 use std::cell::Cell;
 use std::cell::RefCell;
+use utils::Error;
 use utils::ErrorKind;
-use utils::LocatedError;
 use utils::Ref;
 use utils::ToRef;
 
@@ -72,8 +72,6 @@ macro_rules! tc_log_end {
 ///
 /// 必须是 Option, 因为在检查 lambda 表达式是 Pi 类型时，两边需要同步环境
 pub type Env = crate::utils::StackMap<Option<Ref<str>>, (core::Expr, RefCell<Option<core::Expr>>)>;
-
-type Error = LocatedError<ErrorKind>;
 
 macro_rules! throw {
     ($e:expr) => {
@@ -381,7 +379,7 @@ fn switch_rule(e: &ast::Expr, ty: &core::Expr, env: &Env) -> Result<core::Expr, 
     // attach location information and convert to ErrorKind::TypeNotMatch
     type_check_same(&ty_e_o, ty, env).map_err(|err| {
         if err.loc.is_none() {
-            LocatedError {
+            Error {
                 loc: Some(e.span()),
                 erk: ErrorKind::TypeNotMatch {
                     expected: dpp(ty, env).to_string(),

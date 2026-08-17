@@ -1,11 +1,15 @@
 use crate::ast::*;
-use crate::utils::{Ref, Span, LocatedError, ErrorKind};
+use crate::utils::Ref;
+use crate::utils::Span;
+use crate::utils::LocatedError;
+use crate::utils::ErrorKind;
+use crate::utils;
 use lalrpop_util::ParseError;
 
 grammar;
 
 extern {
-    type Error = LocatedError<ErrorKind>;
+    type Error = utils::Error;
 }
 
 // 词法解析器

@@ -260,6 +260,8 @@ where
     }
 }
 
+pub type Error = LocatedError<ErrorKind>;
+
 pub(crate) trait ToRef<T> {
     fn to_ref(self) -> Ref<T>;
 }

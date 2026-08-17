@@ -301,7 +301,6 @@ where
     }
 }
 
-pub type Error = LocatedError<ErrorKind>;
 
 /// 标识符，`Dummy` 用于表示参数不在之后出现，例如从 `→` `Pair` 转换为 `Π` `Σ` 时。
 /// 未来或可用于 `_` 语法
