@@ -176,7 +176,7 @@ fn eval_arg(source: &str, check_type_only: bool, env: &mut Env) -> anyhow::Resul
     for stat in stats {
         match stat {
             Expression(expr) => process_expression(&expr, env, check_type_only)?,
-            CheckSame(_, ty, e1, e2) => process_check_same(&ty, &e1, &e2, env)?,
+            CheckSame(sp, ty, e1, e2) => process_check_same(sp, &ty, &e1, &e2, env)?,
             _ => {
                 bail!("Only `expression` and `check-same` are supported in command line arguments")
             }
@@ -214,7 +214,7 @@ fn process_expression(
     Ok(())
 }
 
-fn process_check_same(
+fn process_check_same_inner(
     ty: &pielang::ast::Expr,
     e1: &pielang::ast::Expr,
     e2: &pielang::ast::Expr,
@@ -234,6 +234,16 @@ fn process_check_same(
     log::trace!("-----");
     tc::expr_check_same(&e1_o, &e2_o, &ty_o, env)?;
     Ok(())
+}
+
+fn process_check_same(
+    loc: pielang::utils::Span,
+    ty: &pielang::ast::Expr,
+    e1: &pielang::ast::Expr,
+    e2: &pielang::ast::Expr,
+    env: &Env,
+) -> anyhow::Result<()> {
+    process_check_same_inner(ty, e1, e2, env).map_err(|err| attach_location(err, loc))
 }
 
 fn process_claim(sym: &str, ty: &pielang::ast::Expr, env: &mut Env) -> anyhow::Result<()> {
@@ -286,13 +296,27 @@ fn interpret_file(source: &str, check_type_only: bool, env: &mut Env) -> anyhow:
             Expression(expr) => {
                 process_expression(&expr, env, check_type_only)?;
             }
-            CheckSame(_, ty, e1, e2) => {
-                // TODO: attach location information
-                process_check_same(&ty, &e1, &e2, env)?;
+            CheckSame(sp, ty, e1, e2) => {
+                process_check_same(sp, &ty, &e1, &e2, env)?;
             }
         }
     }
     Ok(())
+}
+
+fn attach_location(err: anyhow::Error, loc: pielang::utils::Span) -> anyhow::Error {
+    match err.downcast::<pielang::utils::Error>() {
+        Ok(LocatedError { loc: None, erk }) => {
+            eprintln!("downcast OK");
+            LocatedError { loc: Some(loc), erk }.into()},
+        Ok(err) => {
+            eprintln!("downcast OK 2");
+            err.into()},
+        Err(err) => {
+            eprintln!("downcast Err");
+            err
+        },
+    }
 }
 
 // 有 `-i` 参数或无参数时开启 REPL
@@ -324,7 +348,7 @@ fn repl(check_type_only: bool, env: &mut Env) -> anyhow::Result<()> {
                                 Expression(expr) => process_expression(&expr, env, check_type_only),
                                 Define(_, Id(_, sym), expr) => process_define(sym, &expr, env),
                                 Claim(_, Id(_, sym), ty) => process_claim(sym, &ty, env),
-                                CheckSame(_, ty, e1, e2) => process_check_same(&ty, &e1, &e2, env),
+                                CheckSame(sp, ty, e1, e2) => process_check_same(sp, &ty, &e1, &e2, env),
                             });
                         }
                     }
